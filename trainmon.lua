@@ -9,55 +9,42 @@ local chat = require('chat')
 local fonts = require('fonts')
 local settings = require('settings')
 local imgui = require('imgui')
-local scaling = require('scaling')
+-- local scaling = require('scaling')
 
 local ffi = require("ffi")
 local d3d = require('d3d8')
 local C = ffi.C
 local d3d8dev = d3d.get_device()
 
+local config_jp = require('rules_jp')
+local config_en = require('rules_en')
 
-local function print_char_codes(str)
-    local char_codes = ''
-    str:gsub('.', function(ch)
-        char_codes = char_codes .. string.byte(ch) .. '|'
-    end)
-    print(chat.header(addon.name):append(chat.message(string.format('Char code for "%s" = %s', str, char_codes))))
-end
+
+-- local function print_char_codes(str)
+--     local char_codes = ''
+--     str:gsub('.', function(ch)
+--         char_codes = char_codes .. string.byte(ch) .. '|'
+--     end)
+--     print(chat.header(addon.name):append(chat.message(string.format('Char code for "%s" = %s', str, char_codes))))
+-- end
 
 local function on_load_callback()
-    -- print_char_codes('A')
+    -- print_char_codes('ã€')
 end
 
 
 -- Non persistent Data
 local trainmon = T{
-    rules = T{
-        -- “¢”°‘ÎÛ1FBeach Bunnycc4
-        -- “¢”°‘ÎÛ2FSand Lizardcc4
-        options = '“¢”°‘ÎÛ(%d)F([^\129]+)cc([%d]+)',
-        -- ŒP—ûƒƒjƒ…[‚ğŒˆ’è‚µ‚½
-        accepted = 'ŒP—ûƒƒjƒ…[‚ğŒˆ’è‚µ‚½',
-        -- “¢”°‘ÎÛ1FVelociraptorcc4/7
-        -- “¢”°‘ÎÛ2FSand Cockatricecc3/3
-        confirmed = '“¢”°‘ÎÛ(%d)F([^\129]+)cc([%d]+)/([%d]+)',
-        -- ŒP—ûƒGƒŠƒAFƒeƒŠƒKƒ“–¦
-        confirmed_zone = 'ŒP—ûƒGƒŠƒAF(.+)',
-        -- ŒP—ûƒƒjƒ…[‚ğƒLƒƒƒ“ƒZƒ‹‚µ‚½
-        cancelled = 'ŒP—ûƒƒjƒ…[‚ğƒLƒƒƒ“ƒZƒ‹‚µ‚½',
-        -- “¢”°‘ÎÛ‚Ìƒ‚ƒ“ƒXƒ^[‚ğ“|‚µ‚Ü‚µ‚½(1/3)
-        target_monster_killed = '“¢”°‘ÎÛ‚Ìƒ‚ƒ“ƒXƒ^[‚ğ“|‚µ‚Ü‚µ‚½[(]+([%d]+)/([%d]+)',
-        -- target_monster_killed_split = '[^%d]+([%d]+)/([%d]+)',
-        -- Velociraptor‚ğ“|‚µ‚½
-        monster_killed = '([%a%s%d]+)‚ğ“|‚µ‚½',
-        -- Tenzen‚ÍABeach Bunny‚ğ“|‚µ‚½
-        monster_killed_by = '([%a%s%d]+)‚ÍA([%a%s%d]+)‚ğ“|‚µ‚½',
-        -- ŒP—ûƒƒjƒ…[‚ğŠ®‹‚µ‚½
-        completed = 'ŒP—ûƒƒjƒ…[‚ğŠ®‹‚µ‚½',
-        -- “¯‚¶ŒP—ûƒƒjƒ…[‚ğŒp‘±‚µ‚Ü‚·
-        repeated = '“¯‚¶ŒP—ûƒƒjƒ…[‚ğŒp‘±‚µ‚Ü‚·',
-        -- Monster name describes a family of monsters
-        monster_family = '‘°',
+    lang = 1, -- 1 = English, 2 = Japanese
+    loaded = false,
+
+    rules = {
+        config_en.rules,
+        config_jp.rules,
+    },
+    tests = {
+        config_en.test_commands,
+        config_jp.test_commands,
     },
 
     target_monsters = {},
@@ -73,9 +60,8 @@ local trainmon = T{
     player_zone_id = -1,
 
     waiting_zone_confirmation = false,
-
+    
     processing_message = false,
-    lang = 0, -- 0 = English, 1 = Japanese
 };
 
 -- Persistant Data
@@ -219,9 +205,11 @@ local function _process_incoming_message(str)
         return
     end
 
+    local rules = trainmon.rules[trainmon.lang]
+
     -- Confirming training
-    if string.find(str, trainmon.rules.confirmed) then
-        for monster_index, monster_name, count, total in string.gmatch(str, trainmon.rules.confirmed) do
+    if string.find(str, rules.confirmed) then
+        for monster_index, monster_name, count, total in string.gmatch(str, rules.confirmed) do
             -- print(chat.header(addon.name):append(chat.message(string.format('confirmed: %d, %s (%d/%d)', monster_index, monster_name, count, total))))
             
             if monster_index == 1 then
@@ -231,7 +219,7 @@ local function _process_incoming_message(str)
                 trainmon.target_zone_id = zone_id
             end
 
-            local is_family = string.find(monster_name, trainmon.rules.monster_family, 1, true) ~= nil
+            local is_family = string.find(monster_name, rules.monster_family, 1, true) ~= nil
 
             trainmon.target_monsters[tonumber(monster_index)] = {
                 name = monster_name,
@@ -247,8 +235,8 @@ local function _process_incoming_message(str)
     end
 
     -- Confirming zone
-    if trainmon.waiting_zone_confirmation and string.find(str, trainmon.rules.confirmed_zone) then
-        local zone_name = string.match(str, trainmon.rules.confirmed_zone)
+    if trainmon.waiting_zone_confirmation and string.find(str, rules.confirmed_zone) then
+        local zone_name = string.match(str, rules.confirmed_zone)
         local zone_id = AshitaCore:GetResourceManager():GetString("zones.names", zone_name)
         if zone_id ~= -1 then
             -- print(chat.header(addon.name):append(chat.message(string.format('Training zone: %s (%d)', zone_name, zone_id))))
@@ -260,14 +248,14 @@ local function _process_incoming_message(str)
     end
 
     -- Viewing training options
-    if string.find(str, trainmon.rules.options) then
-        for monster_index, monster_name, total in string.gmatch(str, trainmon.rules.options) do
+    if string.find(str, rules.options) then
+        for monster_index, monster_name, total in string.gmatch(str, rules.options) do
             -- print(chat.header(addon.name):append(chat.message(string.format('options: %d, %s (%d)', monster_index, monster_name, total))))
             if monster_index == 1 then
                 reset_training_data()
             end
 
-            local is_family = string.find(monster_name, trainmon.rules.monster_family, 1, true) ~= nil
+            local is_family = string.find(monster_name, rules.monster_family, 1, true) ~= nil
 
             trainmon.target_monsters_options[tonumber(monster_index)] = {
                 name = monster_name,
@@ -282,7 +270,7 @@ local function _process_incoming_message(str)
     end
 
     -- User accepted the last viewed training options
-    if string.find(str, trainmon.rules.accepted, 1, true) then
+    if string.find(str, rules.accepted, 1, true) then
         if #trainmon.target_monsters_options > 0 then
             -- Use the last options we parsed
             trainmon.target_monsters = trainmon.target_monsters_options
@@ -294,7 +282,7 @@ local function _process_incoming_message(str)
     end
 
     -- Training was cancelled
-    if string.find(str, trainmon.rules.cancelled, 1, true) then
+    if string.find(str, rules.cancelled, 1, true) then
         reset_training_data()
         save_train_data()
         return
@@ -305,17 +293,17 @@ local function _process_incoming_message(str)
     if #trainmon.target_monsters > 0 then
         
         -- A target monster was killed. We don't know what the monster is yet, so make a note of the totals
-        if string.find(str, trainmon.rules.target_monster_killed) then
-            local count, total = string.match(str, trainmon.rules.target_monster_killed)
+        if string.find(str, rules.target_monster_killed) then
+            local count, total = string.match(str, rules.target_monster_killed)
             trainmon.last_target_count = tonumber(count)
             trainmon.last_target_total = tonumber(total)
             return
         end
         
         -- Monster killed, if this happens after a target_monster_killed message then we link them together
-        local killed_by, monster_name = string.match(str, trainmon.rules.monster_killed_by)
+        local killed_by, monster_name = string.match(str, rules.monster_killed_by)
         if monster_name == nil then
-            monster_name = string.match(str, trainmon.rules.monster_killed)
+            monster_name = string.match(str, rules.monster_killed)
         end
         if monster_name ~= nil then
             if trainmon.last_target_total == 0 then
@@ -376,7 +364,7 @@ local function _process_incoming_message(str)
         end
 
         -- A training was just completed
-        if string.find(str, trainmon.rules.completed, 1, true) then
+        if string.find(str, rules.completed, 1, true) then
             -- Reset the counts
             for i,v in ipairs(trainmon.target_monsters) do
                 v.count = 0
@@ -391,7 +379,7 @@ local function _process_incoming_message(str)
         end
 
         -- Training was repeated
-        if string.find(str, trainmon.rules.repeated, 1, true) then
+        if string.find(str, rules.repeated, 1, true) then
             trainmon.target_monsters = trainmon.target_monsters_repeat
             trainmon.target_monsters_repeat = {}
             save_train_data()
@@ -527,45 +515,42 @@ ashita.events.register('command', 'command_cb', function (e)
 
     -- TESTING COMMANDS
 
+    local test_commands = trainmon.tests[trainmon.lang]
+
     if (#args == 2 and args[2]:any('options')) then
-        --process_incoming_message('“¢”°‘ÎÛ1FVelociraptorcc7\r\n“¢”°‘ÎÛ2FSand Cockatricecc3')
-        process_incoming_message('“¢”°‘ÎÛ1Fƒ}ƒ“ƒhƒ‰ƒSƒ‰‘°cc6\r\n“¢”°‘ÎÛ2FSand Cockatricecc3')
+        process_incoming_message(test_commands.options)
         return;
     end
 
     if (#args == 2 and args[2]:any('accepted')) then
-        process_incoming_message('ŒP—ûƒƒjƒ…[‚ğŒˆ’è‚µ‚½')
+        process_incoming_message(test_commands.accepted)
         return;
     end
 
     if (#args == 2 and args[2]:any('confirmed')) then
         trainmon.target_zone_id = tonumber(AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0))
-        --process_incoming_message('“¢”°‘ÎÛ1FVelociraptorcc0/7\r\n“¢”°‘ÎÛ2FSand Cockatricecc0/3')
-        process_incoming_message('“¢”°‘ÎÛ1Fƒ}ƒ“ƒhƒ‰ƒSƒ‰‘°cc0/6\r\n“¢”°‘ÎÛ2FSand Cockatricecc0/3')
+        process_incoming_message(test_commands.confirmed)
         return;
     end
 
     if (#args == 2 and args[2]:any('cancelled')) then
-        process_incoming_message('ŒP—ûƒƒjƒ…[‚ğƒLƒƒƒ“ƒZƒ‹‚µ‚½')
+        process_incoming_message(test_commands.cancelled)
         return;
     end
 
     if (#args == 2 and args[2]:any('killed')) then
-        -- process_incoming_message('“¢”°‘ÎÛ‚Ìƒ‚ƒ“ƒXƒ^[‚ğ“|‚µ‚Ü‚µ‚½(1/7)')
-        -- process_incoming_message('Velociraptor‚ğ“|‚µ‚½')
-        
-        process_incoming_message('“¢”°‘ÎÛ‚Ìƒ‚ƒ“ƒXƒ^[‚ğ“|‚µ‚Ü‚µ‚½(4/4)')
-        process_incoming_message('Tenzen‚ÍABeach Bunny‚ğ“|‚µ‚½')
+        process_incoming_message(test_commands.target_monster_killed)
+        process_incoming_message(test_commands.monster_killed_by)
         return;
     end
 
     if (#args == 2 and args[2]:any('completed')) then
-        process_incoming_message('ŒP—ûƒƒjƒ…[‚ğŠ®‹‚µ‚½')
+        process_incoming_message(test_commands.completed)
         return;
     end
 
     if (#args == 2 and args[2]:any('repeated')) then
-        process_incoming_message('“¯‚¶ŒP—ûƒƒjƒ…[‚ğŒp‘±‚µ‚Ü‚·')
+        process_incoming_message(test_commands.repeated)
         return;
     end
 end)
@@ -584,9 +569,9 @@ ashita.events.register('load', 'load_cb', function()
     -- Get language
     local lang = AshitaCore:GetConfigurationManager():GetInt32('boot', 'ashita.language', 'playonline', 2)
     if lang == 1 then
-        trainmon.lang = 1
+        trainmon.lang = 2
     else
-        trainmon.lang = 0
+        trainmon.lang = 1
     end
 
     -- Init data
@@ -601,6 +586,8 @@ ashita.events.register('load', 'load_cb', function()
     trainmon_ui.icon_texture_data = tonumber(ffi.cast("uint32_t", trainmon_ui.icon_texture.image))
     trainmon_ui.entry_texture = load_texture("Range")
     trainmon_ui.entry_texture_data = tonumber(ffi.cast("uint32_t", trainmon_ui.entry_texture.image))
+
+    trainmon.loaded = true
 
     on_load_callback()
 end)
@@ -621,7 +608,9 @@ end)
 * desc : Event called when the addon is processing incoming text.
 --]]
 ashita.events.register('text_in', 'text_in_cb', function (e)
-    process_incoming_message(e.message_modified)
+    if trainmon.loaded then
+        process_incoming_message(e.message_modified)
+    end
 end)
 
 --[[
