@@ -1,15 +1,15 @@
-addon.name      = 'trainmon';
-addon.author    = 'onimitch';
-addon.version   = '1.0';
-addon.desc      = 'Tracks training monster kill counts and displays them onscreen.';
-addon.link      = '';
+addon.name      = 'trainmon'
+addon.author    = 'onimitch'
+addon.version   = '1.0'
+addon.desc      = 'Tracks training monster kill counts and displays them onscreen.'
+addon.link      = 'https://github.com/onimitch/ffxi-trainmon'
 
 require('common')
 local chat = require('chat')
-local fonts = require('fonts')
 local settings = require('settings')
 local imgui = require('imgui')
--- local scaling = require('scaling')
+local gdi = require('gdifonts.include')
+local encoding = require('gdifonts.encoding')
 
 local ffi = require("ffi")
 local d3d = require('d3d8')
@@ -20,20 +20,6 @@ local config_jp = require('rules_jp')
 local config_en = require('rules_en')
 
 
--- local function print_char_codes(str)
---     local char_codes = ''
---     str:gsub('.', function(ch)
---         char_codes = char_codes .. string.byte(ch) .. '|'
---     end)
---     print(chat.header(addon.name):append(chat.message(string.format('Char code for "%s" = %s', str, char_codes))))
--- end
-
-local function on_load_callback()
-    -- print_char_codes('、')
-end
-
-
--- Non persistent Data
 local trainmon = T{
     lang = 1, -- 1 = English, 2 = Japanese
     loaded = false,
@@ -62,7 +48,42 @@ local trainmon = T{
     waiting_zone_confirmation = false,
     
     processing_message = false,
-};
+
+    settings = {},
+    default_settings = T{
+        icon_scale = 20,
+        entry_icon_scale = 12,
+        window_width = 200,
+    
+        title = T{
+            font_alignment = gdi.Alignment.Left,
+            font_color = 0xFFFFFF99,
+            font_family = 'Consolas',
+            font_flags = gdi.FontFlags.Bold,
+            font_height = 20,
+            outline_color = 0xFF000000,
+            outline_width = 2,
+        },
+        entry = T{
+            font_alignment = gdi.Alignment.Left,
+            font_color = 0xFFFFFFFF,
+            font_family = 'Consolas',
+            font_flags = gdi.FontFlags.Bold,
+            font_height = 16,
+            outline_color = 0xFF000000,
+            outline_width = 2,
+        },
+        entry_count = T{
+            font_alignment = gdi.Alignment.Left,
+            font_color = 0xFFFFFFFF,
+            font_family = 'Consolas',
+            font_flags = gdi.FontFlags.Bold,
+            font_height = 16,
+            outline_color = 0xFF000000,
+            outline_width = 2,
+        },
+    },
+}
 
 -- Persistant Data
 local train_data = {}
@@ -71,81 +92,15 @@ local train_data_defaults = T{
     target_zone_id = -1,
 }
 
--- local screen = T{
---     width = scaling.window.w,
---     height = scaling.window.h,
---     center_x = scaling.window.w / 2,
---     center_y = scaling.window.h / 2,
--- };
-
--- Settings
-local user_settings = {}
-local default_settings = T{
-    icon_scale = 20,
-    entry_icon_scale = 12,
-    window_width = 200,
-
-    title = T{
-        visible = true,
-        locked = true,
-        font_family = 'Consolas',  -- Default font family
-        font_height = 15,  -- Default font height
-        color = 0xFFFFFF99,  -- Default text color
-        color_outline = 0xFF000000,  -- Default text outline color
-        draw_flags = 0x10,
-        padding = 0.1,  -- Default text padding
-        bold = true,  -- Default bold text setting
-        italic = false,  -- Default italic text setting
-        background = T{
-            visible = false,  -- Whether the background is visible
-            color = 0x80000000,  -- Background color
-        },
-    },
-    entry = T{
-        visible = true,
-        locked = true,
-        font_family = 'Consolas',  -- Default font family
-        font_height = 12,  -- Default font height
-        color = 0xFFFFFFFF,  -- Default text color
-        color_outline = 0xFF000000,  -- Default text outline color
-        draw_flags = 0x10,
-        padding = 0.1,  -- Default text padding
-        bold = true,  -- Default bold text setting
-        italic = false,  -- Default italic text setting
-        background = T{
-            visible = false,  -- Whether the background is visible
-            color = 0x80000000,  -- Background color
-        },
-    },
-    entry_count = T{
-        visible = true,
-        locked = true,
-        font_family = 'Consolas',  -- Default font family
-        font_height = 12,  -- Default font height
-        color = 0xFFFFFFFF,  -- Default text color
-        color_outline = 0xFF000000,  -- Default text outline color
-        draw_flags = 0x10,
-        padding = 0.1,  -- Default text padding
-        bold = true,  -- Default bold text setting
-        italic = false,  -- Default italic text setting
-        right_justified = false,
-        background = T{
-            visible = false,  -- Whether the background is visible
-            color = 0x80000000,  -- Background color
-        },
-    },
-};
-
 -- UI objects
 local trainmon_ui = T{
-    title_text = {},
+    title_text = nil,
     row_entries = {},
     icon_texture = nil,
     icon_texture_data = nil,
     entry_texture = nil,
     entry_texture_data = nil,
-};
-
+}
 
 local function load_texture(textureName)
     local textures = T{}
@@ -153,30 +108,12 @@ local function load_texture(textureName)
     local texture_ptr = ffi.new('IDirect3DTexture8*[1]')
     local res = C.D3DXCreateTextureFromFileA(d3d8dev, string.format('%s/assets/%s.png', addon.path, textureName), texture_ptr)
     if (res ~= C.S_OK) then
---      error(('Failed to load image texture: %08X (%s)'):fmt(res, d3d.get_error(res)));
+--      error(('Failed to load image texture: %08X (%s)'):fmt(res, d3d.get_error(res)))
         return nil
     end
-    textures.image = ffi.new('IDirect3DTexture8*', texture_ptr[0])
-    d3d.gc_safe_release(textures.image)
-
+    textures.image = d3d.gc_safe_release(ffi.new('IDirect3DTexture8*', texture_ptr[0]))
     return textures
 end
-
-
--- local function split_string(inputstr, sep)
---     if sep == nil then
---        sep = "%s"
---     end
-
---     local t={}
---     for str in string.gmatch(inputstr, '([^'..sep..']+)') do
---        table.insert(t, str)
---     end
---     -- if #t == 0 then
---     --     table.insert(t, inputstr)
---     -- end
---     return t
--- end
 
 local function reset_training_data()
     trainmon.target_monsters = {}
@@ -226,7 +163,7 @@ local function _process_incoming_message(str)
                 count = tonumber(count),
                 total = tonumber(total),
                 is_family = is_family
-            };
+            }
             save_train_data()
         end
 
@@ -237,7 +174,7 @@ local function _process_incoming_message(str)
     -- Confirming zone
     if trainmon.waiting_zone_confirmation and string.find(str, rules.confirmed_zone) then
         local zone_name = string.match(str, rules.confirmed_zone)
-        local zone_id = AshitaCore:GetResourceManager():GetString("zones.names", zone_name)
+        local zone_id = AshitaCore:GetResourceManager():GetString('zones.names', zone_name)
         if zone_id ~= -1 then
             -- print(chat.header(addon.name):append(chat.message(string.format('Training zone: %s (%d)', zone_name, zone_id))))
             trainmon.target_zone_id = zone_id
@@ -262,7 +199,7 @@ local function _process_incoming_message(str)
                 count = 0,
                 total = tonumber(total),
                 is_family = is_family
-            };
+            }
         end
 
         trainmon.waiting_zone_confirmation = false
@@ -318,7 +255,7 @@ local function _process_incoming_message(str)
             local expected_count = count - 1
 
             -- Find the target monster in our list
-            local monster_index = 0;
+            local monster_index = 0
             for i, v in ipairs(trainmon.target_monsters) do
                 if v.name == monster_name then
                     monster_index = i
@@ -399,75 +336,102 @@ local function process_incoming_message(str)
 end
 
 local function set_text_visible(visible, num_rows)
-    trainmon_ui.title_text.visible = visible
+    trainmon_ui.title_text:set_visible(visible)
     num_rows = num_rows or #trainmon_ui.row_entries
     for i,v in ipairs(trainmon_ui.row_entries) do
         local entry_visible = visible and i <= num_rows
-        v.name.visible = entry_visible
-        v.count.visible = entry_visible
+        v.name:set_visible(entry_visible)
+        v.count:set_visible(entry_visible)
     end
 end
 
 -- Display the latest training status
 local function draw_window()
-
     if #trainmon.target_monsters == 0 or trainmon.target_zone_id ~= trainmon.player_zone_id then
         set_text_visible(false)
-    else
-        imgui.SetNextWindowSize({ -1, -1, }, ImGuiCond_Always)
-        local windowFlags = bit.bor(ImGuiWindowFlags_NoDecoration, ImGuiWindowFlags_AlwaysAutoResize, ImGuiWindowFlags_NoFocusOnAppearing, ImGuiWindowFlags_NoNav, ImGuiWindowFlags_NoBackground, ImGuiWindowFlags_NoBringToFrontOnFocus)
-        -- if (gConfig.lockPositions) then
-        -- 	windowFlags = bit.bor(windowFlags, ImGuiWindowFlags_NoMove);
-        -- end
+        return
+    end
 
-        if (imgui.Begin('TrainMon', true, windowFlags)) then
-            local icon_scale = user_settings.settings.icon_scale
-            local entry_icon_scale = user_settings.settings.entry_icon_scale
-            local entry_name_font = user_settings.settings.entry
-            local entry_count_font = user_settings.settings.entry_count
-            
-            local cursor_x, cursor_y = imgui.GetCursorScreenPos()
-            imgui.Image(trainmon_ui.icon_texture_data, { icon_scale, icon_scale })
+    imgui.SetNextWindowSize({ -1, -1, }, ImGuiCond_Always)
+    local windowFlags = bit.bor(ImGuiWindowFlags_NoDecoration, ImGuiWindowFlags_AlwaysAutoResize, ImGuiWindowFlags_NoFocusOnAppearing, ImGuiWindowFlags_NoNav, ImGuiWindowFlags_NoBackground, ImGuiWindowFlags_NoBringToFrontOnFocus)
+    -- if (gConfig.lockPositions) then
+    -- 	windowFlags = bit.bor(windowFlags, ImGuiWindowFlags_NoMove)
+    -- end
 
-            trainmon_ui.title_text.text = string.format('Training %s\n', AshitaCore:GetResourceManager():GetString("zones.names", trainmon.target_zone_id))
-            trainmon_ui.title_text.position_x = cursor_x + icon_scale + 5
-            trainmon_ui.title_text.position_y = cursor_y - 4
+    if (imgui.Begin('TrainMon', true, windowFlags)) then
+        local icon_scale = trainmon.settings.icon_scale
+        local entry_icon_scale = trainmon.settings.entry_icon_scale
+        local entry_name_font = trainmon.settings.entry
+        local entry_count_font = trainmon.settings.entry_count
+        
+        local cursor_x, cursor_y = imgui.GetCursorScreenPos()
+        imgui.Image(trainmon_ui.icon_texture_data, { icon_scale, icon_scale })
+        
+        local zone_name = encoding:ShiftJIS_To_UTF8(AshitaCore:GetResourceManager():GetString('zones.names', trainmon.target_zone_id), true)
+        trainmon_ui.title_text:set_text(zone_name) --string.format('Training %s', zone_name))
+        local w, h = trainmon_ui.title_text:get_text_size()
 
-            local w, h = trainmon_ui.title_text:get_text_size()
+        trainmon_ui.title_text:set_position_x(cursor_x + icon_scale + 5)
+        trainmon_ui.title_text:set_position_y(cursor_y - 2)
 
-            -- Draw rows
-            local offsetY = h / 2
-            local col1X = icon_scale + 5
-            local col2X = user_settings.settings.window_width
-            for i,v in ipairs(trainmon.target_monsters) do
-                -- Do we have a entry already?
-                local entry = trainmon_ui.row_entries[i]
-                if entry == nil then
-                    entry = {}
-                    entry.name = fonts.new(entry_name_font)
-                    entry.count = fonts.new(entry_count_font)
-                    trainmon_ui.row_entries[i] = entry
-                end
-
-                imgui.SetCursorScreenPos({cursor_x + entry_icon_scale / 2, cursor_y + offsetY + entry_icon_scale / 2})
-                imgui.Image(trainmon_ui.entry_texture_data, { entry_icon_scale, entry_icon_scale })
-
-                entry.name.text = v.name
-                entry.name.position_x = cursor_x + col1X
-                entry.name.position_y = cursor_y + offsetY
-
-                entry.count.text = string.format('(%d/%d)', v.count, v.total)
-                entry.count.position_x = cursor_x + col2X
-                entry.count.position_y = cursor_y + offsetY
-                
-                w, h = entry.name:get_text_size()
-                offsetY = offsetY + h
+        -- Draw rows
+        local rowSpacing = entry_icon_scale / 1
+        local offsetY = h + rowSpacing / 2
+        local col1X = icon_scale + 5
+        local col2X = trainmon.settings.window_width
+        for i,v in ipairs(trainmon.target_monsters) do
+            -- Do we have a entry already?
+            local entry = trainmon_ui.row_entries[i]
+            if entry == nil then
+                entry = {}
+                entry.name = gdi:create_object(entry_name_font)
+                entry.count = gdi:create_object(entry_count_font)
+                trainmon_ui.row_entries[i] = entry
             end
 
-            set_text_visible(true, #trainmon.target_monsters)
+            entry.name:set_text(encoding:ShiftJIS_To_UTF8(v.name, true))
+            entry.count:set_text(string.format('(%d/%d)', v.count, v.total))
+            w, h = entry.name:get_text_size()
+
+            imgui.SetCursorScreenPos({cursor_x + entry_icon_scale / 2, cursor_y + offsetY + 2})
+            imgui.Image(trainmon_ui.entry_texture_data, { entry_icon_scale, entry_icon_scale })
+
+            entry.name:set_position_x(cursor_x + col1X)
+            entry.name:set_position_y(cursor_y + offsetY)
+            
+            entry.count:set_position_x(cursor_x + col2X)
+            entry.count:set_position_y(cursor_y + offsetY)
+            
+            offsetY = offsetY + entry_icon_scale + rowSpacing
         end
-        imgui.End()
+
+        set_text_visible(true, #trainmon.target_monsters)
     end
+    imgui.End()
+end
+
+local function initialise_ui()
+    -- Image textures
+    -- TODO: Replace texture_data and just render Sprites instead rather than using IMGUI (req: support our own drag to move window)
+    trainmon_ui.icon_texture = load_texture('Cursor')
+    trainmon_ui.icon_texture_data = tonumber(ffi.cast('uint32_t', trainmon_ui.icon_texture.image))
+    trainmon_ui.entry_texture = load_texture('Range')
+    trainmon_ui.entry_texture_data = tonumber(ffi.cast('uint32_t', trainmon_ui.entry_texture.image))
+
+    -- Text
+    if trainmon_ui.title_text ~= nil then
+        gdi:destroy_object(trainmon_ui.title_text)
+    end
+    trainmon_ui.title_text = gdi:create_object(trainmon.settings.title)
+
+    -- Clear out old font objects
+    for i,v in ipairs(trainmon_ui.row_entries) do
+        if v ~= nil then
+            gdi:destroy_object(v.name)
+            gdi:destroy_object(v.count)
+        end
+    end
+    trainmon_ui.row_entries = {}
 end
 
 
@@ -475,24 +439,23 @@ end
 * event: command
 * desc : Event called when the addon is processing a command.
 --]]
-ashita.events.register('command', 'command_cb', function (e)
+ashita.events.register('command', 'trainmon_command', function (e)
     -- Parse the command arguments..
-    local args = e.command:args();
-    if (#args == 0 or args[1] ~= '/tmon') then
-        return;
+    local args = e.command:args()
+    if (#args == 0 or args[1] ~= '/tmon' and args[1] ~= '/trainmon') then
+        return
     end
 
     -- Block all tmon related commands..
-    e.blocked = true;
+    e.blocked = true
 
-    -- Handle: /tmon test commands
-
-    if (#args == 2 and args[2]:any('st')) then
+    -- Handle: /tmon (st | status)
+    if (#args == 2 and args[2]:any('st', 'status')) then
         if #trainmon.target_monsters == 0 then
             print(chat.header(addon.name):append(chat.message('No training data')))
         else
-            local zone_name = AshitaCore:GetResourceManager():GetString("zones.names", trainmon.target_zone_id)
-            local player_zone_name = AshitaCore:GetResourceManager():GetString("zones.names", trainmon.player_zone_id)
+            local zone_name = AshitaCore:GetResourceManager():GetString('zones.names', trainmon.target_zone_id)
+            local player_zone_name = AshitaCore:GetResourceManager():GetString('zones.names', trainmon.player_zone_id)
             print(chat.header(addon.name):append(chat.message(string.format('Training in: %s (Player zone: %s)', zone_name, player_zone_name))))
             
             local current_status = ''
@@ -506,52 +469,51 @@ ashita.events.register('command', 'command_cb', function (e)
         end
     end
 
+    -- Handle: /tmon reset
     if (#args == 2 and args[2]:any('reset')) then
         reset_training_data()
         save_train_data()
-        return;
+        return
     end
 
-
-    -- TESTING COMMANDS
-
+    -- Handle: /tmon test commands
     local test_commands = trainmon.tests[trainmon.lang]
 
     if (#args == 2 and args[2]:any('options')) then
         process_incoming_message(test_commands.options)
-        return;
+        return
     end
 
     if (#args == 2 and args[2]:any('accepted')) then
         process_incoming_message(test_commands.accepted)
-        return;
+        return
     end
 
     if (#args == 2 and args[2]:any('confirmed')) then
         trainmon.target_zone_id = tonumber(AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0))
         process_incoming_message(test_commands.confirmed)
-        return;
+        return
     end
 
     if (#args == 2 and args[2]:any('cancelled')) then
         process_incoming_message(test_commands.cancelled)
-        return;
+        return
     end
 
     if (#args == 2 and args[2]:any('killed')) then
         process_incoming_message(test_commands.target_monster_killed)
         process_incoming_message(test_commands.monster_killed_by)
-        return;
+        return
     end
 
     if (#args == 2 and args[2]:any('completed')) then
         process_incoming_message(test_commands.completed)
-        return;
+        return
     end
 
     if (#args == 2 and args[2]:any('repeated')) then
         process_incoming_message(test_commands.repeated)
-        return;
+        return
     end
 end)
 
@@ -559,9 +521,9 @@ end)
 * event: load
 * desc : Event called when the addon is being loaded.
 --]]
-ashita.events.register('load', 'load_cb', function()
+ashita.events.register('load', 'trainmon_load', function()
     -- Load User settings
-    user_settings.settings = default_settings --settings.load(default_settings)
+    trainmon.settings = settings.load(trainmon.default_settings)
 
     -- Load Training data
     load_training_data()
@@ -581,22 +543,22 @@ ashita.events.register('load', 'load_cb', function()
     trainmon.processing_message = false
 
     -- Init UI
-    trainmon_ui.title_text = fonts.new(user_settings.settings.title)
-    trainmon_ui.icon_texture = load_texture("Cursor")
-    trainmon_ui.icon_texture_data = tonumber(ffi.cast("uint32_t", trainmon_ui.icon_texture.image))
-    trainmon_ui.entry_texture = load_texture("Range")
-    trainmon_ui.entry_texture_data = tonumber(ffi.cast("uint32_t", trainmon_ui.entry_texture.image))
+    initialise_ui()
 
     trainmon.loaded = true
+    print('trainmon loaded')
+end)
 
-    on_load_callback()
+ashita.events.register('unload', 'trainmon_unload', function ()
+    print("trainmon unloaded")
+    gdi:destroy_interface()
 end)
 
 --[[
 * event: packet_in
 * desc : Event called when the addon is processing incoming packets.
 --]]
-ashita.events.register('packet_in', 'packet_in_cb', function(event)
+ashita.events.register('packet_in', 'trainmon_packet_in', function(event)
     -- Zone change packet
     if event.id == 0x0A then
         trainmon.player_zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
@@ -607,7 +569,7 @@ end)
 * event: text_in
 * desc : Event called when the addon is processing incoming text.
 --]]
-ashita.events.register('text_in', 'text_in_cb', function (e)
+ashita.events.register('text_in', 'trainmon_text_in', function (e)
     if trainmon.loaded then
         process_incoming_message(e.message_modified)
     end
@@ -617,7 +579,7 @@ end)
 * event: d3d_present
 * desc : Event called when the Direct3D device is presenting a scene.
 --]]
-ashita.events.register('d3d_present', 'present_cb', function()
+ashita.events.register('d3d_present', 'trainmon_present', function()
     -- Check if player's job changed, then training will be reset
     local player = AshitaCore:GetMemoryManager():GetPlayer()
     local job_main = player:GetMainJob()
@@ -643,3 +605,14 @@ ashita.events.register('d3d_present', 'present_cb', function()
         draw_window()
     end
 end)
+
+local function update_settings(s)
+    if (s ~= nil) then
+        trainmon.settings = s
+    end
+    settings.save()
+    initialise_ui()
+end
+
+-- Registers a callback for the settings to monitor for character switches.
+settings.register('settings', 'settings_update', update_settings)

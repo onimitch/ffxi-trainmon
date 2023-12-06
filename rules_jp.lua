@@ -1,3 +1,4 @@
+-- IMPORTANT: This file should be saved as Shift JIS.
 local config = T{
     rules = T{
         -- “¢”°‘ÎÛ1FBeach Bunnycc4
