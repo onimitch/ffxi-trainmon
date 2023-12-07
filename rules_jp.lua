@@ -1,6 +1,6 @@
 -- IMPORTANT: This file should be saved as Shift JIS.
-local config = T{
-    rules = T{
+local config = {
+    rules = {
         -- 討伐対象1：Beach Bunny……4
         -- 討伐対象2：Sand Lizard……4
         options = '討伐対象(%d)：([^\129]+)……([%d]+)',
@@ -28,15 +28,27 @@ local config = T{
         monster_family = '族',
     },
 
-    test_commands = T{
-        options = '討伐対象1：マンドラゴラ族……6\r\n討伐対象2：Sand Cockatrice……3',
-        accepted = '訓練メニューを決定した',
-        confirmed = '討伐対象1：マンドラゴラ族……0/6\r\n討伐対象2：Sand Cockatrice……0/3',
-        cancelled = '訓練メニューをキャンセルした',
-        target_monster_killed = '討伐対象のモンスターを倒しました(1/3)',
-        monster_killed_by = 'Tenzenは、Sand Cockatriceを倒した',
-        completed = '訓練メニューを完遂した',
-        repeated = '同じ訓練メニューを継続します',
+    tests = {
+        options_intro = { 151, [[その頁では、次のモンスターと
+戦うように、教えている。]] },
+        options_entry = function(i, name, count) return { 151, ('討伐対象%d：%s……%d'):format(i, name, count)} end,
+        options_outro = { 151, [[討伐対象の目安：レベル1～6
+訓練エリア：東サルタバルタ
+自主訓練の達成と同時に、同じ自主訓練を自動的に
+繰り返す設定にしますか？]] },
+        training_accepted = { 148, '訓練メニューを決定した！' },
+        training_cancelled = { 148, '訓練メニューをキャンセルした' },
+        target_monster_killed = function(count, total) return { 122, ('討伐対象のモンスターを倒しました(%d/%d)'):format(count, total) } end,
+        monster_killed_by_self = function(monster_name, player_name) return { 36, ('%sは、%sを倒した'):format(player_name, monster_name) } end,
+        monster_killed_by = function(monster_name, player_name) return { 37, ('%sは、%sを倒した'):format(player_name, monster_name) } end,
+        training_completed = { 0, '訓練メニューを完遂した' },
+        training_repeated = { 0, '同じ訓練メニューを継続します' },
+
+        monsters = {
+            { name = 'Beach Bunny', family = 'ウサギ族' },
+            { name = 'Sand Lizard', family = 'トカゲ族' },
+            { name = 'Mandragora', family = 'マンドラゴラ族' },
+        }
     },
 }
 

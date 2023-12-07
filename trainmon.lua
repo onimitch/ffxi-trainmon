@@ -16,38 +16,26 @@ local d3d = require('d3d8')
 local C = ffi.C
 local d3d8dev = d3d.get_device()
 
+local monitor = require('monitor')
 local config_jp = require('rules_jp')
 local config_en = require('rules_en')
 
 
 local trainmon = T{
-    lang = 1, -- 1 = English, 2 = Japanese
-    loaded = false,
-
-    rules = {
-        config_en.rules,
-        config_jp.rules,
-    },
-    tests = {
-        config_en.test_commands,
-        config_jp.test_commands,
-    },
-
-    target_monsters = {},
-    target_zone_id = {},
-
-    target_monsters_options = {},
-    target_monsters_repeat = {},
-    last_target_count = 0,
-    last_target_total = 0,
+    monitor = nil,
+    processing_message = false,
 
     player_job_main = nil,
     player_job_sub = nil,
     player_zone_id = -1,
 
-    waiting_zone_confirmation = false,
-    
-    processing_message = false,
+    -- feed_chat_modes = T{
+    --     message = 150,
+    --     system = 151,
+    --     player = 36, -- Onishiro defeats the Tiny Mandragora.
+    --     npc = 37, -- Tenzen defeats the Beach Bunny.
+    --     battle = 122, -- You defeated a designated target. (Progress: 1/4)
+    -- },
 
     settings = {},
     default_settings = T{
@@ -85,13 +73,6 @@ local trainmon = T{
     },
 }
 
--- Persistant Data
-local train_data = {}
-local train_data_defaults = T{
-    target_monsters = {},
-    target_zone_id = -1,
-}
-
 -- UI objects
 local trainmon_ui = T{
     title_text = nil,
@@ -115,221 +96,15 @@ local function load_texture(textureName)
     return textures
 end
 
-local function reset_training_data()
-    trainmon.target_monsters = {}
-    trainmon.target_monsters_repeat = {}
-    trainmon.target_monsters_options = {}
-    trainmon.target_zone_id = -1
-    trainmon.last_target_count = 0
-    trainmon.last_target_total = 0
-end
+local function process_incoming_message(mode, message)
+    -- if not trainmon.feed_chat_modes:any(function (v) return v == mode end) then
+    --     return
+    -- end
 
-local function load_training_data()
-    reset_training_data()
-    train_data.settings = settings.load(train_data_defaults, 'training_data')
-    trainmon.target_monsters = train_data.settings.target_monsters
-    trainmon.target_zone_id = tonumber(train_data.settings.target_zone_id)
-end
-
-local function save_train_data()
-    train_data.settings.target_monsters = trainmon.target_monsters
-    train_data.settings.target_zone_id = trainmon.target_zone_id
-    settings.save('training_data')
-end
-
-local function _process_incoming_message(str)
-    if string.find(str, 'trainmon', 1, true) then
-        return
-    end
-
-    local rules = trainmon.rules[trainmon.lang]
-
-    -- Confirming training
-    if string.find(str, rules.confirmed) then
-        for monster_index, monster_name, count, total in string.gmatch(str, rules.confirmed) do
-            -- print(chat.header(addon.name):append(chat.message(string.format('confirmed: %d, %s (%d/%d)', monster_index, monster_name, count, total))))
-            
-            if monster_index == 1 then
-                -- Don't lose zone_id when we reset, because confirming can happen in another zone
-                local zone_id = trainmon.target_zone_id
-                reset_training_data()
-                trainmon.target_zone_id = zone_id
-            end
-
-            local is_family = string.find(monster_name, rules.monster_family, 1, true) ~= nil
-
-            trainmon.target_monsters[tonumber(monster_index)] = {
-                name = monster_name,
-                count = tonumber(count),
-                total = tonumber(total),
-                is_family = is_family
-            }
-            save_train_data()
-        end
-
-        trainmon.waiting_zone_confirmation = true
-        return
-    end
-
-    -- Confirming zone
-    if trainmon.waiting_zone_confirmation and string.find(str, rules.confirmed_zone) then
-        local zone_name = string.match(str, rules.confirmed_zone)
-        local zone_id = AshitaCore:GetResourceManager():GetString('zones.names', zone_name)
-        if zone_id ~= -1 then
-            -- print(chat.header(addon.name):append(chat.message(string.format('Training zone: %s (%d)', zone_name, zone_id))))
-            trainmon.target_zone_id = zone_id
-            save_train_data()
-            trainmon.waiting_zone_confirmation = false
-        end
-        return
-    end
-
-    -- Viewing training options
-    if string.find(str, rules.options) then
-        for monster_index, monster_name, total in string.gmatch(str, rules.options) do
-            -- print(chat.header(addon.name):append(chat.message(string.format('options: %d, %s (%d)', monster_index, monster_name, total))))
-            if monster_index == 1 then
-                reset_training_data()
-            end
-
-            local is_family = string.find(monster_name, rules.monster_family, 1, true) ~= nil
-
-            trainmon.target_monsters_options[tonumber(monster_index)] = {
-                name = monster_name,
-                count = 0,
-                total = tonumber(total),
-                is_family = is_family
-            }
-        end
-
-        trainmon.waiting_zone_confirmation = false
-        return
-    end
-
-    -- User accepted the last viewed training options
-    if string.find(str, rules.accepted, 1, true) then
-        if #trainmon.target_monsters_options > 0 then
-            -- Use the last options we parsed
-            trainmon.target_monsters = trainmon.target_monsters_options
-            trainmon.target_monsters_options = {}
-            trainmon.target_zone_id = tonumber(AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0))
-            save_train_data()
-        end
-        return
-    end
-
-    -- Training was cancelled
-    if string.find(str, rules.cancelled, 1, true) then
-        reset_training_data()
-        save_train_data()
-        return
-    end
-
-
-    -- Active Training
-    if #trainmon.target_monsters > 0 then
-        
-        -- A target monster was killed. We don't know what the monster is yet, so make a note of the totals
-        if string.find(str, rules.target_monster_killed) then
-            local count, total = string.match(str, rules.target_monster_killed)
-            trainmon.last_target_count = tonumber(count)
-            trainmon.last_target_total = tonumber(total)
-            return
-        end
-        
-        -- Monster killed, if this happens after a target_monster_killed message then we link them together
-        local killed_by, monster_name = string.match(str, rules.monster_killed_by)
-        if monster_name == nil then
-            monster_name = string.match(str, rules.monster_killed)
-        end
-        if monster_name ~= nil then
-            if trainmon.last_target_total == 0 then
-                return
-            end
-
-            -- print(chat.header(addon.name):append(chat.message('Monster killed "%s" by "%s"')):fmt(monster_name, killed_by))
-
-            -- Monster has now been killed, so get the monster name and link it to the last count update
-            local total = trainmon.last_target_total
-            local count = trainmon.last_target_count
-            local expected_count = count - 1
-
-            -- Find the target monster in our list
-            local monster_index = 0
-            for i, v in ipairs(trainmon.target_monsters) do
-                if v.name == monster_name then
-                    monster_index = i
-                    break
-                end
-            end
-
-            -- If we didn't find the monster name, it might be a family of monsters
-            -- For now we fall back to match by total & expected_count on a family
-            -- The better way to do this would be to have a table that maps monster names to family of monsters
-            if monster_index == 0 then
-                for i, v in ipairs(trainmon.target_monsters) do
-                    if v.is_family and v.total == total and v.count == expected_count then
-                        monster_index = i
-                        break
-                    end
-                end
-            end
-
-            -- Still no luck matching family, so search without is_family
-            if monster_index == 0 then
-                print(chat.header(addon.name):append(chat.message('Failed to find Monster family "%s" (%d/%d)')):fmt(monster_name, count, total))
-                for i, v in ipairs(trainmon.target_monsters) do
-                    if v.total == total and v.count == expected_count then
-                        monster_index = i
-                        break
-                    end
-                end
-            end
-
-            if monster_index == 0 then
-                print(chat.header(addon.name):append(chat.error('Failed to find Monster in Training Data "%s" (%d/%d)')):fmt(monster_name, count, total))
-                trainmon.last_target_count = 0
-                trainmon.last_target_total = 0
-                return
-            end
-
-            trainmon.target_monsters[monster_index].count = count
-            trainmon.last_target_count = 0
-            trainmon.last_target_total = 0
-            save_train_data()
-            return
-        end
-
-        -- A training was just completed
-        if string.find(str, rules.completed, 1, true) then
-            -- Reset the counts
-            for i,v in ipairs(trainmon.target_monsters) do
-                v.count = 0
-            end
-
-            -- Make a copy of the target_monsters incase we repeat the training
-            trainmon.target_monsters_repeat = trainmon.target_monsters
-            -- Clear training data
-            trainmon.target_monsters = {}
-            save_train_data()
-            return
-        end
-
-        -- Training was repeated
-        if string.find(str, rules.repeated, 1, true) then
-            trainmon.target_monsters = trainmon.target_monsters_repeat
-            trainmon.target_monsters_repeat = {}
-            save_train_data()
-            return
-        end
-    end
-end
-
-local function process_incoming_message(str)
     if not trainmon.processing_message then
         trainmon.processing_message = true
-        
-        _process_incoming_message(str)
+
+        trainmon.monitor:process_input(mode, message)
 
         trainmon.processing_message = false
     end
@@ -347,7 +122,7 @@ end
 
 -- Display the latest training status
 local function draw_window()
-    if #trainmon.target_monsters == 0 or trainmon.target_zone_id ~= trainmon.player_zone_id then
+    if #trainmon.monitor._target_monsters == 0 or trainmon.target_zone_id ~= trainmon.player_zone_id then
         set_text_visible(false)
         return
     end
@@ -379,7 +154,7 @@ local function draw_window()
         local offsetY = h + rowSpacing / 2
         local col1X = icon_scale + 5
         local col2X = trainmon.settings.window_width
-        for i,v in ipairs(trainmon.target_monsters) do
+        for i,v in ipairs(trainmon.monitor._target_monsters) do
             -- Do we have a entry already?
             local entry = trainmon_ui.row_entries[i]
             if entry == nil then
@@ -405,7 +180,7 @@ local function draw_window()
             offsetY = offsetY + entry_icon_scale + rowSpacing
         end
 
-        set_text_visible(true, #trainmon.target_monsters)
+        set_text_visible(true, #trainmon.monitor._target_monsters)
     end
     imgui.End()
 end
@@ -451,7 +226,7 @@ ashita.events.register('command', 'trainmon_command', function (e)
 
     -- Handle: /tmon (st | status)
     if (#args == 2 and args[2]:any('st', 'status')) then
-        if #trainmon.target_monsters == 0 then
+        if #trainmon.monitor._target_monsters == 0 then
             print(chat.header(addon.name):append(chat.message('No training data')))
         else
             local zone_name = AshitaCore:GetResourceManager():GetString('zones.names', trainmon.target_zone_id)
@@ -459,9 +234,9 @@ ashita.events.register('command', 'trainmon_command', function (e)
             print(chat.header(addon.name):append(chat.message(string.format('Training in: %s (Player zone: %s)', zone_name, player_zone_name))))
             
             local current_status = ''
-            for i,v in ipairs(trainmon.target_monsters) do
+            for i,v in ipairs(trainmon.monitor._target_monsters) do
                 current_status = current_status .. string.format('%d: %s (%d/%d)', i, v.name, v.count, v.total)
-                if i < #trainmon.target_monsters then
+                if i < #trainmon.monitor._target_monsters then
                     current_status = current_status .. '\n'
                 end
             end
@@ -471,48 +246,8 @@ ashita.events.register('command', 'trainmon_command', function (e)
 
     -- Handle: /tmon reset
     if (#args == 2 and args[2]:any('reset')) then
-        reset_training_data()
-        save_train_data()
-        return
-    end
-
-    -- Handle: /tmon test commands
-    local test_commands = trainmon.tests[trainmon.lang]
-
-    if (#args == 2 and args[2]:any('options')) then
-        process_incoming_message(test_commands.options)
-        return
-    end
-
-    if (#args == 2 and args[2]:any('accepted')) then
-        process_incoming_message(test_commands.accepted)
-        return
-    end
-
-    if (#args == 2 and args[2]:any('confirmed')) then
-        trainmon.target_zone_id = tonumber(AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0))
-        process_incoming_message(test_commands.confirmed)
-        return
-    end
-
-    if (#args == 2 and args[2]:any('cancelled')) then
-        process_incoming_message(test_commands.cancelled)
-        return
-    end
-
-    if (#args == 2 and args[2]:any('killed')) then
-        process_incoming_message(test_commands.target_monster_killed)
-        process_incoming_message(test_commands.monster_killed_by)
-        return
-    end
-
-    if (#args == 2 and args[2]:any('completed')) then
-        process_incoming_message(test_commands.completed)
-        return
-    end
-
-    if (#args == 2 and args[2]:any('repeated')) then
-        process_incoming_message(test_commands.repeated)
+        trainmon.monitor:reset_training_data()
+        trainmon.monitor:save_train_data()
         return
     end
 end)
@@ -525,15 +260,12 @@ ashita.events.register('load', 'trainmon_load', function()
     -- Load User settings
     trainmon.settings = settings.load(trainmon.default_settings)
 
-    -- Load Training data
-    load_training_data()
-
-    -- Get language
+    -- Get language and init monitor
     local lang = AshitaCore:GetConfigurationManager():GetInt32('boot', 'ashita.language', 'playonline', 2)
     if lang == 1 then
-        trainmon.lang = 2
+        trainmon.monitor = monitor:new('ja', config_jp.rules)
     else
-        trainmon.lang = 1
+        trainmon.monitor = monitor:new('en', config_en.rules)
     end
 
     -- Init data
@@ -545,8 +277,7 @@ ashita.events.register('load', 'trainmon_load', function()
     -- Init UI
     initialise_ui()
 
-    trainmon.loaded = true
-    print('trainmon loaded')
+    print('trainmon loaded: lang=' .. trainmon.monitor._lang_code)
 end)
 
 ashita.events.register('unload', 'trainmon_unload', function ()
@@ -570,9 +301,8 @@ end)
 * desc : Event called when the addon is processing incoming text.
 --]]
 ashita.events.register('text_in', 'trainmon_text_in', function (e)
-    if trainmon.loaded then
-        process_incoming_message(e.message_modified)
-    end
+    local mode = bit.band(e.mode_modified,  0x000000FF)
+    process_incoming_message(mode, e.message_modified)
 end)
 
 --[[
@@ -599,7 +329,7 @@ ashita.events.register('d3d_present', 'trainmon_present', function()
             trainmon.player_job_main = job_main
             trainmon.player_job_sub = job_sub
             print(chat.header(addon.name):append(chat.message('Job changed, resetting training data')))
-            reset_training_data()
+            trainmon.monitor:reset_training_data()
         end
 
         draw_window()
