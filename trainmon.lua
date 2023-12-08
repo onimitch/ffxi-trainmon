@@ -17,8 +17,6 @@ local C = ffi.C
 local d3d8dev = d3d.get_device()
 
 local monitor = require('monitor')
-local config_jp = require('rules_jp')
-local config_en = require('rules_en')
 
 
 local trainmon = T{
@@ -122,7 +120,7 @@ end
 
 -- Display the latest training status
 local function draw_window()
-    if #trainmon.monitor._target_monsters == 0 or trainmon.target_zone_id ~= trainmon.player_zone_id then
+    if #trainmon.monitor._target_monsters == 0 or trainmon.monitor._target_zone_id ~= trainmon.player_zone_id then
         set_text_visible(false)
         return
     end
@@ -142,7 +140,7 @@ local function draw_window()
         local cursor_x, cursor_y = imgui.GetCursorScreenPos()
         imgui.Image(trainmon_ui.icon_texture_data, { icon_scale, icon_scale })
         
-        local zone_name = encoding:ShiftJIS_To_UTF8(AshitaCore:GetResourceManager():GetString('zones.names', trainmon.target_zone_id), true)
+        local zone_name = encoding:ShiftJIS_To_UTF8(AshitaCore:GetResourceManager():GetString('zones.names', trainmon.monitor._target_zone_id), true)
         trainmon_ui.title_text:set_text(zone_name) --string.format('Training %s', zone_name))
         local w, h = trainmon_ui.title_text:get_text_size()
 
@@ -229,7 +227,7 @@ ashita.events.register('command', 'trainmon_command', function (e)
         if #trainmon.monitor._target_monsters == 0 then
             print(chat.header(addon.name):append(chat.message('No training data')))
         else
-            local zone_name = AshitaCore:GetResourceManager():GetString('zones.names', trainmon.target_zone_id)
+            local zone_name = AshitaCore:GetResourceManager():GetString('zones.names', trainmon.monitor._target_zone_id)
             local player_zone_name = AshitaCore:GetResourceManager():GetString('zones.names', trainmon.player_zone_id)
             print(chat.header(addon.name):append(chat.message(string.format('Training in: %s (Player zone: %s)', zone_name, player_zone_name))))
             
@@ -263,9 +261,9 @@ ashita.events.register('load', 'trainmon_load', function()
     -- Get language and init monitor
     local lang = AshitaCore:GetConfigurationManager():GetInt32('boot', 'ashita.language', 'playonline', 2)
     if lang == 1 then
-        trainmon.monitor = monitor:new('ja', config_jp.rules)
+        trainmon.monitor = monitor:new('ja')
     else
-        trainmon.monitor = monitor:new('en', config_en.rules)
+        trainmon.monitor = monitor:new('en')
     end
 
     -- Init data
@@ -292,7 +290,7 @@ end)
 ashita.events.register('packet_in', 'trainmon_packet_in', function(event)
     -- Zone change packet
     if event.id == 0x0A then
-        trainmon.player_zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+        trainmon.player_zone_id = tonumber(AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0))
     end
 end)
 
@@ -317,7 +315,7 @@ ashita.events.register('d3d_present', 'trainmon_present', function()
 
     -- If we've got training data, make sure the player_zone_id is up to date
     -- For now this is a workaround, as the zone change packet isn't always picking up a change of zone
-    trainmon.player_zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+    trainmon.player_zone_id = tonumber(AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0))
 
     if job_main ~= 0 then
         if trainmon.player_job_main == 0 then

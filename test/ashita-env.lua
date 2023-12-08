@@ -30,6 +30,17 @@ function AshitaCore:GetMemoryManager()
     }
 end
 
+function AshitaCore:GetResourceManager()
+    return {
+        GetString = function(self, table_name, name_or_id, ...)
+            if table_name == 'zones.names' then
+                return type(name_or_id) == 'string' and 0 or 'Test Zone name'
+            end
+            return type(name_or_id) == 'string' and 0 or 'Test<' .. table_name .. '>'
+        end,
+    }
+end
+
 function GetPlayerEntity()
     return {
         ServerId = 123456, 
@@ -44,8 +55,13 @@ ashita = {
     fs = {}
 }
 ashita.fs.exists = function(path)
-    local isok, errstr, errcode = os.execute(('if exist "%s" (exit 0) else (exit 1)'):format(path))
-    return isok and errcode == 0
+    local command = ('if exist "%s" (echo 0) else (echo 1)'):format(path)
+
+    local handle = io.popen(command)
+    local result = handle:read("*a")
+    handle:close()
+
+    return tonumber(result) == 0
 end
 ashita.fs.create_dir = function(path)
     if ashita.fs.exists(path) then

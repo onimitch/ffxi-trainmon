@@ -11,6 +11,8 @@ local config = {
         confirmed = '討伐対象(%d)：([^\129]+)……([%d]+)/([%d]+)',
         -- 訓練エリア：テリガン岬
         confirmed_zone = '訓練エリア：(.+)',
+        -- 現在の訓練メニューは以上のようだ。
+        confirmed_end = '現在の訓練メニューは以上のようだ。',
         -- 訓練メニューをキャンセルした
         cancelled = '訓練メニューをキャンセルした',
         -- 討伐対象のモンスターを倒しました(1/3)
@@ -36,13 +38,20 @@ local config = {
 訓練エリア：東サルタバルタ
 自主訓練の達成と同時に、同じ自主訓練を自動的に
 繰り返す設定にしますか？]] },
+
+        confirmed_entry = function(i, name, count, total) return { 151, ('討伐対象%d：%s……%d/%d'):format(i, name, count, total)} end,
+        confirmed_outro = { 151, ([[討伐対象の目安：レベル1～6
+訓練エリア：東サルタバルタ]]) },
+        confirmed_end = { 151, '現在の訓練メニューは以上のようだ。' },
+
         training_accepted = { 148, '訓練メニューを決定した！' },
         training_cancelled = { 148, '訓練メニューをキャンセルした' },
+        training_completed = { 122, '訓練メニューを完遂した' },
+        training_repeated = { 122, '同じ訓練メニューを継続します' },
+
         target_monster_killed = function(count, total) return { 122, ('討伐対象のモンスターを倒しました(%d/%d)'):format(count, total) } end,
         monster_killed_by_self = function(monster_name, player_name) return { 36, ('%sは、%sを倒した'):format(player_name, monster_name) } end,
         monster_killed_by = function(monster_name, player_name) return { 37, ('%sは、%sを倒した'):format(player_name, monster_name) } end,
-        training_completed = { 0, '訓練メニューを完遂した' },
-        training_repeated = { 0, '同じ訓練メニューを継続します' },
 
         monsters = {
             { name = 'Beach Bunny', family = 'ウサギ族' },
