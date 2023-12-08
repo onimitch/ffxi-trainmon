@@ -3,18 +3,11 @@ local settings = require('settings')
 
 local config_jp = require('rules_jp')
 local config_en = require('rules_en')
+local chat_modes = require('chat_modes')
 
 local monitor = {}
 monitor.__index = monitor
 
-local chat_modes = T{
-    player = 36, -- Player defeats the Tiny Mandragora.
-    others = 37, -- Tenzen defeats the Beach Bunny.
-    battle = 122, -- You defeated a designated target. (Progress: 1/4)
-    unknown = 148,
-    message = 150,
-    system = 151,
-}
 local train_data_defaults = T{
     target_monsters = {},
     target_zone_id = -1,
