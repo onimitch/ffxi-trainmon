@@ -1,6 +1,4 @@
 -- https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences
-local schar = string.char
-
 local colormt = {}
 
 function colormt:__tostring()
@@ -18,7 +16,7 @@ end
 colormt.__metatable = {}
 
 local function makecolor(value)
-    return setmetatable({ value = schar(27) .. '[' .. tostring(value) .. 'm' }, colormt)
+    return setmetatable({ value = string.char(27) .. '[' .. tostring(value) .. 'm' }, colormt)
 end
 
 local colors = {

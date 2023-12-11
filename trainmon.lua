@@ -17,6 +17,8 @@ local C = ffi.C
 local d3d8dev = d3d.get_device()
 
 local monitor = require('monitor')
+local test_runner = require('test.tests')
+local chat_modes = require('chat_modes')
 
 
 local trainmon = T{
@@ -26,14 +28,6 @@ local trainmon = T{
     player_job_main = nil,
     player_job_sub = nil,
     player_zone_id = -1,
-
-    -- feed_chat_modes = T{
-    --     message = 150,
-    --     system = 151,
-    --     player = 36, -- Onishiro defeats the Tiny Mandragora.
-    --     npc = 37, -- Tenzen defeats the Beach Bunny.
-    --     battle = 122, -- You defeated a designated target. (Progress: 1/4)
-    -- },
 
     settings = {},
     default_settings = T{
@@ -81,6 +75,11 @@ local trainmon_ui = T{
     entry_texture_data = nil,
 }
 
+local function print_shiftjis(message)
+    local encoded_message = encoding:UTF8_To_ShiftJIS(message)
+    print(encoded_message)
+end
+
 local function load_texture(textureName)
     local textures = T{}
     -- Load the texture for usage..
@@ -95,17 +94,20 @@ local function load_texture(textureName)
 end
 
 local function process_incoming_message(mode, message)
-    -- if not trainmon.feed_chat_modes:any(function (v) return v == mode end) then
+    -- if not chat_modes:any(function (v) return v == mode end) then
     --     return
     -- end
 
-    if not trainmon.processing_message then
-        trainmon.processing_message = true
+    -- if not trainmon.processing_message then
+    --     trainmon.processing_message = true
 
-        trainmon.monitor:process_input(mode, message)
+    --     -- Monitor deals with UTF8
+    --     local message_utf8 = encoding:ShiftJIS_To_UTF8(message)
 
-        trainmon.processing_message = false
-    end
+    --     trainmon.monitor:process_input(mode, message_utf8)
+
+    --     trainmon.processing_message = false
+    -- end
 end
 
 local function set_text_visible(visible, num_rows)
@@ -248,6 +250,17 @@ ashita.events.register('command', 'trainmon_command', function (e)
         trainmon.monitor:save_train_data()
         return
     end
+
+    -- Handle: /tmon test
+    if (#args == 2 and args[2]:any('test')) then
+        if test_runner ~= nil then
+            trainmon.processing_message = true
+            print('Running tests...')
+            test_runner()
+            trainmon.processing_message = false
+        end
+        return
+    end
 end)
 
 --[[
@@ -261,9 +274,9 @@ ashita.events.register('load', 'trainmon_load', function()
     -- Get language and init monitor
     local lang = AshitaCore:GetConfigurationManager():GetInt32('boot', 'ashita.language', 'playonline', 2)
     if lang == 1 then
-        trainmon.monitor = monitor:new('ja')
+        trainmon.monitor = monitor:new('ja', print_shiftjis)
     else
-        trainmon.monitor = monitor:new('en')
+        trainmon.monitor = monitor:new('en', print_shiftjis)
     end
 
     -- Init data

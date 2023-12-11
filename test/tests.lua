@@ -1,37 +1,47 @@
--- Setup test environment
-addon = {
-    name = 'trainmon'
-}
+-- Detect if we're running inside Ashita env
+local running_in_ashita = true
+if addon == nil then
+    running_in_ashita = false
+    addon = {
+        name = 'trainmon'
+    }
+end
 
 -- Setup search paths
 local module_path = debug.getinfo(1, 'S').source:sub(2)
-local search_path_base = string.gsub(module_path, '/' .. addon.name .. '/test/tests%.lua', '/')
-print('search_path_base: ' .. search_path_base)
+local addons_root_dir = string.gsub(module_path, '[\\/]' .. addon.name .. '[\\/]test[\\/]tests%.lua', '/')
 
--- Tests dir
-package.path = search_path_base .. addon.name .. '/test/?.lua' .. ';' .. package.path
--- Addon dir
-package.path = search_path_base .. addon.name .. '/?.lua' .. ';' .. package.path
--- Add Ashita libs dir
-package.path = search_path_base .. 'libs/?.lua' .. ';' .. package.path
--- print('module_search_paths: ' .. package.path)
+-- This dir
+package.path = addons_root_dir .. addon.name .. '/test/?.lua' .. ';' .. package.path
 
-require('ashita-env')
-local ansicolors = require('ansicolors')
+-- Setup environment if we're not running in Ashita
+if not running_in_ashita then
+    -- Addon dir
+    package.path = addons_root_dir .. addon.name .. '/?.lua' .. ';' .. package.path
+    -- Add Ashita libs dir
+    package.path = addons_root_dir .. 'libs/?.lua' .. ';' .. package.path
+
+    require('ashita-env')
+end
 
 
 -- Define tests
 
 require('common')
+local chat = require('chat')
 local monitor = require('monitor')
+local ansicolors = require('ansicolors')
+local monster_db = require('monster_db/db')
+local encoding = require('gdifonts.encoding')
 
 local test_output = {
-    en = require('rules_en').tests,
-    ja = require('rules_jp').tests,
+    en = require('testdata_en'),
+    ja = require('testdata_ja'),
 }
 
 local data = {}
 local tests_to_run = {
+    'parser',
     'init',
     'options',
     'confirmed',
@@ -43,10 +53,33 @@ local tests_to_run = {
     'completed',
 }
 
+local function get_str_codes(str)
+	return (str:gsub('.', function (c)
+		return string.format('[%02X]', string.byte(c))
+	end))
+end
+
+local log_color = {
+    green = running_in_ashita and chat.colors.LawnGreen or ansicolors.green,
+    red = running_in_ashita and chat.colors.Tomato or ansicolors.red,
+    reset = running_in_ashita and chat.colors.Reset or ansicolors.reset,
+    bright = running_in_ashita and '' or ansicolors.bright,
+    black = running_in_ashita and chat.colors.Grey or ansicolors.black,
+}
+
+local function printenc(str)
+    if running_in_ashita then
+        local encoded_str = encoding:UTF8_To_ShiftJIS(str)
+        print(encoded_str)
+    else
+        print(str)
+    end
+end
+
 local function TEST(condition, title)
     local passOrFail = condition and 'PASS' or 'FAIL'
-    local color = condition and ansicolors.green or ansicolors.red
-    print(color .. 'TEST ' .. passOrFail .. ': ' .. title .. ansicolors.reset)
+    local color = condition and log_color.green or log_color.red
+    print(color .. 'TEST ' .. passOrFail .. ': ' .. title .. log_color.reset)
     return condition
 end
 
@@ -61,7 +94,7 @@ local function print_target_monster_data(target_monsters)
                 current_status = current_status .. '\n'
             end
         end
-        print(current_status)
+        printenc(current_status)
     end
 end
 
@@ -121,13 +154,60 @@ local tests = function(lang_code)
         -- Reset data
         data = {}
         data.output = test_output[lang_code]
-        data.mon = monitor:new(lang_code)
-    end, 
+        data.mon = monitor:new(lang_code, printenc, encoding)
+
+        -- Ensure windows terminal is displaying in utf-8
+        if not running_in_ashita then
+            os.execute('chcp 65001')
+        end
+
+        -- Create some monsters for us to use
+        data.monsters = {}
+
+        local monster_keys = {
+            'goblin',
+            'orc'
+        }
+        for _, key in ipairs(monster_keys) do
+            table.insert(data.monsters, ({
+                name = monster_db.families[key].monsters[1],
+                family = monster_db.families[key][lang_code],
+            }))
+            printenc('Monster: ' .. data.monsters[#data.monsters].name .. ', Family: ' .. data.monsters[#data.monsters].family)
+        end
+    end,
+    parser = function()
+        -- print('String codes: ' .. get_str_codes('……'))
+        -- print('String codes: ' .. get_str_codes('Goblin Thug……4'))
+        -- print('String codes: ' .. get_str_codes('ゴブリン族……4'))
+
+        -- -- local pattern = '討伐対象(%d)：([%a%A%s]+)……([%d]+)'
+        -- local pattern = '討伐対象(%d)：(.+)……([%d]+)'
+        -- -- local pattern = '討伐対象(%d)：([^…]+)……([%d]+)'
+
+        -- local index, name, count = string.match('討伐対象1：Goblin Thug……4', pattern)
+        -- print('Parse test 1: ' .. tostring(index) .. ', ' .. tostring(name) .. ', ' .. tostring(count))
+        -- print('String codes 1: ' .. get_str_codes(name or ''))
+
+        -- index, name, count = string.match('討伐対象2：ゴブリン族……4', pattern)
+        -- print('Parse test 2: ' .. tostring(index) .. ', ' .. tostring(name) .. ', ' .. tostring(count))
+        -- print('String codes 2: ' .. get_str_codes(name or ''))
+        -- if name == 'ゴブリン族' then
+        --     print('MATCH!')
+        -- end
+
+        local in_string_utf8 = 'Monster: Goblin Thug, Family: ゴブリン族'
+        print('in_string_utf8: ' .. #in_string_utf8)
+        local out_string_sjis = encoding:UTF8_To_ShiftJIS(in_string_utf8)
+        print('out_string_sjis: ' .. #out_string_sjis)
+        local out_string_utf8 = encoding:ShiftJIS_To_UTF8(out_string_sjis)
+        print('out_string_utf8: ' .. #out_string_utf8)
+    end,
     options = function ()
         -- Training options presented to the player
         local input_monsters = {
-            { name = data.output.monsters[1].name, total = 4 },
-            { name = data.output.monsters[2].name, total = 4 },
+            { name = data.monsters[1].name, total = 4 },
+            { name = data.monsters[2].name, total = 4 },
         }
         present_training_options(data, input_monsters)
 
@@ -138,7 +218,7 @@ local tests = function(lang_code)
         local target_monsters = data.mon._target_monsters
         if TEST(target_monsters ~= nil and #target_monsters == #input_monsters, 'Target monster count') then
             print_target_monster_data(target_monsters)
-
+            print('--')
             for i, v in ipairs(input_monsters) do
                 TEST(target_monsters[i].name == input_monsters[i].name, 'Target monster[' .. i .. '] name')
                 TEST(target_monsters[i].total == input_monsters[i].total, 'Target monster[' .. i .. '] total')
@@ -148,8 +228,8 @@ local tests = function(lang_code)
     confirmed = function ()
         -- Confirmed training options presented to the player
         local input_monsters = {
-            { name = data.output.monsters[1].name, count = 1, total = 4 },
-            { name = data.output.monsters[2].name, count = 2, total = 4 },
+            { name = data.monsters[1].name, count = 1, total = 4 },
+            { name = data.monsters[2].name, count = 2, total = 4 },
         }
         present_confirmed_training_options(data, input_monsters)
 
@@ -169,8 +249,8 @@ local tests = function(lang_code)
         data.mon:reset_training_data()
 
         local input_monsters = {
-            { name = data.output.monsters[1].name, total = 4 },
-            { name = data.output.monsters[2].name, total = 4 },
+            { name = data.monsters[1].name, total = 4 },
+            { name = data.monsters[2].name, total = 4 },
         }
         present_training_options(data, input_monsters)
         data.mon:process_input(data.output.training_accepted)
@@ -188,8 +268,8 @@ local tests = function(lang_code)
         data.mon:reset_training_data()
 
         local input_monsters = {
-            { name = data.output.monsters[1].name, total = 4, target_name = data.output.monsters[1].name },
-            { name = data.output.monsters[2].name, total = 4, target_name = data.output.monsters[2].name },
+            { name = data.monsters[1].name, total = 4 },
+            { name = data.monsters[2].name, total = 4 },
         }
         present_training_options(data, input_monsters)
         data.mon:process_input(data.output.training_accepted)
@@ -217,11 +297,12 @@ local tests = function(lang_code)
         data.mon:reset_training_data()
 
         local input_monsters = {
-            { name = data.output.monsters[1].name, total = 4, target_name = data.output.monsters[1].name },
-            { name = data.output.monsters[2].family, total = 4, target_name = data.output.monsters[2].name },
+            { name = data.monsters[1].name, total = 4 },
+            { name = data.monsters[2].family, total = 4, target_name = data.monsters[2].name },
         }
         present_training_options(data, input_monsters)
         data.mon:process_input(data.output.training_accepted)
+        print_target_monster_data(data.mon._target_monsters)
 
         local target_monsters = data.mon._target_monsters
         if TEST(target_monsters ~= nil and #target_monsters == #input_monsters, 'Target monster count') then
@@ -238,8 +319,8 @@ local tests = function(lang_code)
         data.mon:reset_training_data()
 
         local input_monsters = {
-            { name = data.output.monsters[1].family, count = 0, total = 4, target_name = data.output.monsters[1].name },
-            { name = data.output.monsters[2].family, count = 0, total = 4, target_name = data.output.monsters[2].name },
+            { name = data.monsters[1].family, count = 0, total = 4, target_name = data.monsters[1].name },
+            { name = data.monsters[2].family, count = 0, total = 4, target_name = data.monsters[2].name },
         }
         present_training_options(data, input_monsters)
         data.mon:process_input(data.output.training_accepted)
@@ -250,6 +331,14 @@ local tests = function(lang_code)
 
             -- If we kill second family first, since they have the same totals these tests fail
             -- For now there isn't anything we can do about this until we add a hardcoded family > monster name map.
+            --
+            -- Based on https://www.bg-wiki.com/ffxi/Fields_of_Valor and https://www.bg-wiki.com/ffxi/Fields_of_Valor
+            -- The following training pages have two or more monster families that share the same count:
+            -- Batallia Downs, page 4  (FOV)
+            -- Lower Delkfutt's Tower, page 1, 2 (GOV)
+            -- Middle Delkfutt's Tower, page 3 (GOV)
+            -- Temple of Uggalepih, page 1 (GOV)
+            -- Quicksand Caves, page 3, 5 (GOV)
             kill_target(input_monsters, 2)
             TEST_KILL_COUNT(input_monsters, target_monsters, 2)
             kill_target(input_monsters, 1)
@@ -268,8 +357,8 @@ local tests = function(lang_code)
         data.mon:reset_training_data()
 
         local input_monsters = {
-            { name = data.output.monsters[1].family, total = 5, target_name = data.output.monsters[1].name },
-            { name = data.output.monsters[2].family, total = 4, target_name = data.output.monsters[2].name },
+            { name = data.monsters[1].family, total = 5, target_name = data.monsters[1].name },
+            { name = data.monsters[2].family, total = 4, target_name = data.monsters[2].name },
         }
         present_training_options(data, input_monsters)
         data.mon:process_input(data.output.training_accepted)
@@ -284,7 +373,7 @@ local tests = function(lang_code)
             kill_target(input_monsters, 1)
             TEST_KILL_COUNT(input_monsters, target_monsters, 1)
             print_target_monster_data(target_monsters)
-            
+
             kill_target(input_monsters, 2, 99)
             kill_target(input_monsters, 1, 99)
             TEST_KILL_COUNT(input_monsters, target_monsters, 1)
@@ -296,8 +385,8 @@ local tests = function(lang_code)
         data.mon:reset_training_data()
 
         local input_monsters = {
-            { name = data.output.monsters[1].name, count = 4, total = 4 },
-            { name = data.output.monsters[2].name, count = 4, total = 4 },
+            { name = data.monsters[1].name, count = 4, total = 4 },
+            { name = data.monsters[2].name, count = 4, total = 4 },
         }
         present_confirmed_training_options(data, input_monsters)
 
@@ -332,13 +421,20 @@ local function run_tests(desc, tests_table, run_list)
         else
             print('Running test: ' .. test_name:upper())
             testf()
-            print(ansicolors.bright .. ansicolors.black .. '------------------------' .. ansicolors.reset)
+            -- raw_print(log_color.bright .. log_color.black .. '------------------------' .. log_color.reset)
         end
     end
 end
 
 
--- Run tests
+local function run_all_tests()
+    run_tests('Japanese', tests('ja'), tests_to_run)
+    --run_tests('English', tests('en'), tests_to_run)
+end
 
-run_tests('Japanese', tests('ja'), tests_to_run)
---run_tests('English', tests('en'), tests_to_run)
+-- Run tests
+if not running_in_ashita then
+    run_all_tests()
+end
+
+return run_all_tests

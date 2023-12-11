@@ -1,9 +1,11 @@
 local chat = require('chat')
 local settings = require('settings')
+local gdi_encoding = require('gdifonts.encoding')
 
-local config_jp = require('rules_jp')
-local config_en = require('rules_en')
+local rules_ja = require('rules_ja')
+local rules_en = require('rules_en')
 local chat_modes = require('chat_modes')
+local monster_db = require('monster_db/db')
 
 local monitor = {}
 monitor.__index = monitor
@@ -14,17 +16,20 @@ local train_data_defaults = T{
 }
 local train_data_settings_key = 'training_data'
 
-function monitor:new(lang_code)
+function monitor:new(lang_code, print_func, encoding_module)
     local instance = {}
     setmetatable(instance, self)
+
+    instance.print = print_func or print
+    instance.encoding = encoding_module or gdi_encoding
 
     instance._lang_code = lang_code
     if lang_code == 'ja' then
         instance.process_input = monitor.process_input_japanese
-        instance._rules = config_jp.rules
+        instance._rules = rules_ja
     else
         instance.process_input = monitor.process_input_english
-        instance._rules = config_en.rules
+        instance._rules = rules_en
     end
 
     instance._waiting_confirm_end = false
@@ -62,7 +67,8 @@ function monitor:process_input_japanese(mode, input)
     if type(mode) == 'table' then
         mode, input = unpack(mode)
     end
-    -- print(input)
+
+    -- self.print(input)
 
     -- Confirming training
     if mode == chat_modes.system and string.find(input, self._rules.confirmed) then
@@ -71,17 +77,20 @@ function monitor:process_input_japanese(mode, input)
         self:reset_training_data()
         self._target_zone_id = zone_id
 
-        for monster_index, monster_name, count, total in string.gmatch(input, self._rules.confirmed) do
-            -- print(chat.header(addon.name):append(chat.message(string.format('confirmed: %d, %s (%d/%d)', monster_index, monster_name, count, total))))
+        -- Split by new lines
+        for line in string.gmatch(input, '[^\r\n]+') do
+            for monster_index, monster_name, count, total in string.gmatch(line, self._rules.confirmed) do
+                -- self.print(chat.header(addon.name):append(chat.message(string.format('confirmed: %d, %s (%d/%d)', monster_index, monster_name, count, total))))
 
-            local is_family = string.find(monster_name, self._rules.monster_family, 1, true) ~= nil
+                local is_family = string.find(monster_name, self._rules.monster_family, 1, true) ~= nil
 
-            self._target_monsters_options[tonumber(monster_index)] = {
-                name = monster_name,
-                count = tonumber(count),
-                total = tonumber(total),
-                is_family = is_family
-            }
+                self._target_monsters_options[tonumber(monster_index)] = {
+                    name = monster_name,
+                    count = tonumber(count),
+                    total = tonumber(total),
+                    is_family = is_family
+                }
+            end
         end
 
         self._waiting_confirm_end = true
@@ -91,16 +100,16 @@ function monitor:process_input_japanese(mode, input)
     -- Confirming zone
     if mode == chat_modes.system and self._waiting_confirm_end and string.find(input, self._rules.confirmed_zone) then
         local zone_name = string.match(input, self._rules.confirmed_zone):trim()
-        local zone_id = AshitaCore:GetResourceManager():GetString('zones.names', zone_name)
+        local zone_id = AshitaCore:GetResourceManager():GetString('zones.names', self.encoding:UTF8_To_ShiftJIS(zone_name, true))
         if zone_id ~= -1 then
             -- print(chat.header(addon.name):append(chat.message(string.format('Training zone: %s (%d)', zone_name, zone_id))))
             self._target_zone_id = zone_id
             self:save_train_data()
         else
-            print(chat.header(addon.name):append(chat.error(string.format('Unknown Training zone: "%s"', zone_name))))
+            self.print(chat.header(addon.name):append(chat.error(string.format('Unknown Training zone: "%s"', zone_name))))
             local player_zone_id = tonumber(AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0))
-            local player_zone_name = AshitaCore:GetResourceManager():GetString('zones.names', player_zone_id)
-            print(chat.header(addon.name):append(chat.message(string.format('Player zone: %s (%d)', player_zone_name, player_zone_id))))
+            local player_zone_name = self.encoding:ShiftJIS_To_UTF8(AshitaCore:GetResourceManager():GetString('zones.names', player_zone_id), true)
+            self.print(chat.header(addon.name):append(chat.message(string.format('Player zone: %s (%d)', player_zone_name, player_zone_id))))
         end
         return
     end
@@ -121,17 +130,23 @@ function monitor:process_input_japanese(mode, input)
     if mode == chat_modes.system and string.find(input, self._rules.options) then
         self:reset_training_data()
 
-        for monster_index, monster_name, total in string.gmatch(input, self._rules.options) do
-            -- print(chat.header(addon.name):append(chat.message(string.format('options: %d, %s (%d)', monster_index, monster_name, total))))
+        self.print('Match options')
 
-            local is_family = string.find(monster_name, self._rules.monster_family, 1, true) ~= nil
+        -- Split by new lines
+        for line in string.gmatch(input, '[^\r\n]+') do
+            self.print('Line: ' .. line)
+            for monster_index, monster_name, total in string.gmatch(line, self._rules.options) do
+                self.print(chat.header(addon.name):append(chat.message(string.format('options: %d, %s (%d)', monster_index, monster_name, total))))
 
-            self._target_monsters_options[tonumber(monster_index)] = {
-                name = monster_name,
-                count = 0,
-                total = tonumber(total),
-                is_family = is_family
-            }
+                local is_family = string.find(monster_name, self._rules.monster_family, 1, true) ~= nil
+
+                self._target_monsters_options[tonumber(monster_index)] = {
+                    name = monster_name,
+                    count = 0,
+                    total = tonumber(total),
+                    is_family = is_family
+                }
+            end
         end
         return
     end
@@ -177,7 +192,7 @@ function monitor:process_input_japanese(mode, input)
                     return
                 end
 
-                -- print(chat.header(addon.name):append(chat.message('Monster killed "%s" by "%s" -- last_total: %d, last_count: %d')):fmt(monster_name, killed_by, self._last_target_total, self._last_target_count))
+                -- self.print(chat.header(addon.name):append(chat.message('Monster killed "%s" by "%s" -- last_total: %d, last_count: %d')):fmt(monster_name, killed_by, self._last_target_total, self._last_target_count))
 
                 -- Monster has now been killed, so get the monster name and link it to the last count update
                 local total = self._last_target_total
@@ -193,9 +208,19 @@ function monitor:process_input_japanese(mode, input)
                     end
                 end
 
-                -- If we didn't find the monster name, it might be a family of monsters
-                -- For now we fall back to match by total & expected_count on a family
-                -- The better way to do this would be to have a table that maps monster names to family of monsters
+                -- If we didn't find the monster name, it might be for a family of monsters
+                -- Get the family name from the monster db
+                local family_name = monster_db:get_family_name(monster_name, self._lang_code)
+                if family_name ~= nil then
+                    for i, v in ipairs(self._target_monsters) do
+                        if v.name == family_name then
+                            monster_index = i
+                            break
+                        end
+                    end
+                end
+
+                -- If we couldn't match by family nane, then fall back to match by total & expected_count on a family
                 if monster_index == 0 then
                     for i, v in ipairs(self._target_monsters) do
                         if v.is_family and v.total == total and v.count == expected_count then
@@ -203,21 +228,14 @@ function monitor:process_input_japanese(mode, input)
                             break
                         end
                     end
-                end
-
-                -- Still no luck matching family, so search without is_family
-                if monster_index == 0 then
-                    print(chat.header(addon.name):append(chat.message('Failed to find Monster family "%s" (%d/%d)')):fmt(monster_name, count, total))
-                    for i, v in ipairs(self._target_monsters) do
-                        if v.total == total and v.count == expected_count then
-                            monster_index = i
-                            break
-                        end
+                    -- We did find a match, but it might not be correct
+                    if monster_index ~= 0 then
+                        
                     end
                 end
 
                 if monster_index == 0 then
-                    print(chat.header(addon.name):append(chat.error('Failed to find Monster in Training Data "%s" (%d/%d)')):fmt(monster_name, count, total))
+                    self.print(chat.header(addon.name):append(chat.error('Failed to find Monster in Training Data "%s" (%d/%d)')):fmt(monster_name, count, total))
                     self._last_target_count = 0
                     self._last_target_total = 0
                     return
@@ -257,7 +275,7 @@ function monitor:process_input_japanese(mode, input)
 end
 
 function monitor:process_input_english(input)
-    print('EN:' .. input)
+    self.print('EN:' .. input)
 end
 
 return monitor
