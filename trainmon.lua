@@ -94,20 +94,21 @@ local function load_texture(textureName)
 end
 
 local function process_incoming_message(mode, message)
-    -- if not chat_modes:any(function (v) return v == mode end) then
-    --     return
-    -- end
+    -- We can straight up ignore any message which isn't in the modes we look for
+    if not chat_modes:any(function (v) return v == mode end) then
+        return
+    end
 
-    -- if not trainmon.processing_message then
-    --     trainmon.processing_message = true
+    if not trainmon.processing_message then
+        trainmon.processing_message = true
 
-    --     -- Monitor deals with UTF8
-    --     local message_utf8 = encoding:ShiftJIS_To_UTF8(message)
+        -- Monitor deals with UTF8
+        local message_utf8 = encoding:ShiftJIS_To_UTF8(message)
 
-    --     trainmon.monitor:process_input(mode, message_utf8)
+        trainmon.monitor:process_input(mode, message_utf8)
 
-    --     trainmon.processing_message = false
-    -- end
+        trainmon.processing_message = false
+    end
 end
 
 local function set_text_visible(visible, num_rows)
@@ -143,7 +144,7 @@ local function draw_window()
         imgui.Image(trainmon_ui.icon_texture_data, { icon_scale, icon_scale })
         
         local zone_name = encoding:ShiftJIS_To_UTF8(AshitaCore:GetResourceManager():GetString('zones.names', trainmon.monitor._target_zone_id), true)
-        trainmon_ui.title_text:set_text(zone_name) --string.format('Training %s', zone_name))
+        trainmon_ui.title_text:set_text(zone_name)
         local w, h = trainmon_ui.title_text:get_text_size()
 
         trainmon_ui.title_text:set_position_x(cursor_x + icon_scale + 5)
@@ -153,7 +154,7 @@ local function draw_window()
         local rowSpacing = entry_icon_scale / 1
         local offsetY = h + rowSpacing / 2
         local col1X = icon_scale + 5
-        local col2X = trainmon.settings.window_width
+        local col2X = 0
         for i,v in ipairs(trainmon.monitor._target_monsters) do
             -- Do we have a entry already?
             local entry = trainmon_ui.row_entries[i]
@@ -164,19 +165,24 @@ local function draw_window()
                 trainmon_ui.row_entries[i] = entry
             end
 
-            entry.name:set_text(encoding:ShiftJIS_To_UTF8(v.name, true))
+            entry.name:set_text(v.name)
             entry.count:set_text(string.format('(%d/%d)', v.count, v.total))
-            w, h = entry.name:get_text_size()
+            -- w, h = entry.name:get_text_size()
 
             imgui.SetCursorScreenPos({cursor_x + entry_icon_scale / 2, cursor_y + offsetY + 2})
             imgui.Image(trainmon_ui.entry_texture_data, { entry_icon_scale, entry_icon_scale })
 
-            entry.name:set_position_x(cursor_x + col1X)
-            entry.name:set_position_y(cursor_y + offsetY)
-            
-            entry.count:set_position_x(cursor_x + col2X)
+            entry.count:set_position_x(cursor_x + col1X)
             entry.count:set_position_y(cursor_y + offsetY)
-            
+
+            if col2X == 0 then
+                local countW, countH = entry.count:get_text_size()
+                col2X = col1X + countW + 5
+            end
+
+            entry.name:set_position_x(cursor_x + col2X)
+            entry.name:set_position_y(cursor_y + offsetY)
+
             offsetY = offsetY + entry_icon_scale + rowSpacing
         end
 
@@ -255,7 +261,7 @@ ashita.events.register('command', 'trainmon_command', function (e)
     if (#args == 2 and args[2]:any('test')) then
         if test_runner ~= nil then
             trainmon.processing_message = true
-            print('Running tests...')
+            print(chat.header(addon.name):append(chat.message('Running tests...')))
             test_runner()
             trainmon.processing_message = false
         end
@@ -288,11 +294,10 @@ ashita.events.register('load', 'trainmon_load', function()
     -- Init UI
     initialise_ui()
 
-    print('trainmon loaded: lang=' .. trainmon.monitor._lang_code)
+    print(chat.header(addon.name):append(chat.message('Loaded, language: ' .. trainmon.monitor._lang_code)))
 end)
 
 ashita.events.register('unload', 'trainmon_unload', function ()
-    print("trainmon unloaded")
     gdi:destroy_interface()
 end)
 
@@ -339,7 +344,7 @@ ashita.events.register('d3d_present', 'trainmon_present', function()
         elseif trainmon.player_job_main ~= job_main or trainmon.player_job_sub ~= job_sub then
             trainmon.player_job_main = job_main
             trainmon.player_job_sub = job_sub
-            print(chat.header(addon.name):append(chat.message('Job changed, resetting training data')))
+            -- print(chat.header(addon.name):append(chat.message('Job changed, training data reset')))
             trainmon.monitor:reset_training_data()
         end
 

@@ -13,12 +13,12 @@ Training area: East Sarutabaruta.]]) },
 
     training_accepted = { chat_modes.unknown, 'New training regime registered!' },
     training_cancelled = { chat_modes.unknown, 'Training regime canceled.' },
-    training_completed = { chat_modes.battle, 'TODO' },
-    training_repeated = { chat_modes.battle, 'TODO' },
+    training_completed = { chat_modes.battle, 'You have successfully completed the training regime.' },
+    training_repeated = { chat_modes.battle, 'Your current training regime will begin anew!' },
 
     target_monster_killed = function(count, total) return { chat_modes.battle, ('You defeated a designated target. (Progress: %d/%d)'):format(count, total) } end,
-    monster_killed_by_self = function(monster_name, player_name) return { chat_modes.player, ('%s defeats the %s'):format(player_name, monster_name) } end,
-    monster_killed_by = function(monster_name, player_name) return { chat_modes.others, ('%s defeats the %s'):format(player_name, monster_name) } end,
+    monster_killed_by_self = function(monster_name, player_name) return { chat_modes.player, ('%s defeats the %s.'):format(player_name, monster_name) } end,
+    monster_killed_by = function(monster_name, player_name) return { chat_modes.others, ('%s defeats the %s.'):format(player_name, monster_name) } end,
 }
 
 return data

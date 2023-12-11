@@ -14,7 +14,8 @@ local addons_root_dir = string.gsub(module_path, '[\\/]' .. addon.name .. '[\\/]
 -- This dir
 package.path = addons_root_dir .. addon.name .. '/test/?.lua' .. ';' .. package.path
 
--- Setup environment if we're not running in Ashita
+-- Setup test environment if we're not running in Ashita
+-- This is not a 1:1 with Ashita, but it's good enough to run tests
 if not running_in_ashita then
     -- Addon dir
     package.path = addons_root_dir .. addon.name .. '/?.lua' .. ';' .. package.path
@@ -22,6 +23,9 @@ if not running_in_ashita then
     package.path = addons_root_dir .. 'libs/?.lua' .. ';' .. package.path
 
     require('ashita-env')
+
+    -- Ensure windows terminal is displaying in utf-8
+    os.execute('chcp 65001')
 end
 
 
@@ -29,35 +33,35 @@ end
 
 require('common')
 local chat = require('chat')
+local encoding = require('gdifonts.encoding')
+
 local monitor = require('monitor')
 local ansicolors = require('ansicolors')
 local monster_db = require('monster_db/db')
-local encoding = require('gdifonts.encoding')
+local chat_modes = require('chat_modes')
 
-local test_output = {
+local test_data = {
     en = require('testdata_en'),
     ja = require('testdata_ja'),
 }
 
 local data = {}
 local tests_to_run = {
-    'parser',
+    -- 'string_encoding',
     'init',
     'options',
     'confirmed',
     'cancelled',
     'killed',
     'killed_single_family',
-    'killed_multiple_family_same_totals',
-    'killed_multiple_family_diff_totals',
+    'killed_multiple_family',
+    'killed_multiple_one_shot',
     'completed',
+    'other_chat',
 }
 
-local function get_str_codes(str)
-	return (str:gsub('.', function (c)
-		return string.format('[%02X]', string.byte(c))
-	end))
-end
+local test_output_verbose = false
+local test_output = {}
 
 local log_color = {
     green = running_in_ashita and chat.colors.LawnGreen or ansicolors.green,
@@ -68,6 +72,9 @@ local log_color = {
 }
 
 local function printenc(str)
+    if not test_output_verbose then
+        return
+    end
     if running_in_ashita then
         local encoded_str = encoding:UTF8_To_ShiftJIS(str)
         print(encoded_str)
@@ -79,11 +86,20 @@ end
 local function TEST(condition, title)
     local passOrFail = condition and 'PASS' or 'FAIL'
     local color = condition and log_color.green or log_color.red
-    print(color .. 'TEST ' .. passOrFail .. ': ' .. title .. log_color.reset)
+    local result = color .. 'TEST ' .. passOrFail .. ': ' .. title .. log_color.reset
+    if test_output_verbose then
+        print(result)
+    end
+    if not condition then
+        table.insert(test_output.fails, result)
+    end
     return condition
 end
 
 local function print_target_monster_data(target_monsters)
+    if not test_output_verbose then
+        return
+    end
     if target_monsters == 0 then
         print('No training data')
     else
@@ -96,6 +112,16 @@ local function print_target_monster_data(target_monsters)
         end
         printenc(current_status)
     end
+end
+
+local function player_is_in_party(player_name)
+    local party = AshitaCore:GetMemoryManager():GetParty()
+    for i = 0,5 do
+        if party:GetMemberName(i) == player_name then
+            return true
+        end
+    end
+    return false
 end
 
 local function present_training_options(data, input_monsters)
@@ -121,31 +147,40 @@ local function present_confirmed_training_options(data, input_monsters)
     data.mon:process_input(data.output.confirmed_end)
 end
 
-local function kill_target(input_monsters, monster_index, increment)
+local function kill_target(killed_by, input_monsters, monster_index, increment)
     increment = increment or 1
-    local killed_by = 'Tenzen'
     local input_monster = input_monsters[monster_index]
     local target_name = input_monster.target_name or input_monster.name
+    local current_count = input_monster.count or 0
+    local player_in_party = player_is_in_party(killed_by)
+
     -- We need to log a seperate entry for each kill, otherwise the monitor might miss information
     -- This is basically the same as it would appear in the game chat logs anyway
     for i=1,increment do
-        local current_count = input_monster.count or 0
         local new_count = math.min(current_count + 1, input_monster.total)
-        if new_count == input_monster.count then
+        if new_count == current_count then
             break -- already reached total kills
         end
-        input_monster.count = new_count
-        data.mon:process_input(data.output.target_monster_killed(input_monster.count, input_monster.total))
+        if player_in_party then
+            data.mon:process_input(data.output.target_monster_killed(new_count, input_monster.total))
+        end
         data.mon:process_input(data.output.monster_killed_by(target_name, killed_by))
+        current_count = new_count
+    end
+
+    -- The kills should only count if the monster was killed by someone in the party
+    if player_in_party then
+        input_monster.count = current_count
     end
 end
 
-local function TEST_KILL_COUNT(input_monsters, target_monsters, monster_index)
+local function TEST_KILL_COUNT(input_monsters, target_monsters, monster_index, killed_by)
     local input_monster = input_monsters[monster_index]
     local target_name = input_monster.target_name or input_monster.name
     local monster = target_monsters[monster_index]
     local count_desc = (input_monster.count == monster.total) and 'all' or '1'
-    TEST(monster.count == input_monster.count, 'Killed ' .. count_desc .. ' ' .. target_name .. ', count=' .. input_monster.count)
+    killed_by = killed_by or AshitaCore:GetMemoryManager():GetParty():GetMemberName(0)
+    TEST(monster.count == input_monster.count, killed_by .. ' killed ' .. count_desc .. ' ' .. target_name .. ', count=' .. input_monster.count)
 end
 
 local tests = function(lang_code)
@@ -153,19 +188,21 @@ local tests = function(lang_code)
     init = function ()
         -- Reset data
         data = {}
-        data.output = test_output[lang_code]
-        data.mon = monitor:new(lang_code, printenc, encoding)
 
-        -- Ensure windows terminal is displaying in utf-8
-        if not running_in_ashita then
-            os.execute('chcp 65001')
-        end
+        -- Initialise monitor
+        data.mon = monitor:new(lang_code, printenc, encoding, 'training_data_test')
+        -- Monitor auto loads from file so clear any loaded data
+        data.mon:reset_training_data()
+
+        -- Init test data
+        data.output = test_data[lang_code]
+        data.player_name = AshitaCore:GetMemoryManager():GetParty():GetMemberName(0)
 
         -- Create some monsters for us to use
         data.monsters = {}
 
         local monster_keys = {
-            'goblin',
+            'bee',
             'orc'
         }
         for _, key in ipairs(monster_keys) do
@@ -176,26 +213,7 @@ local tests = function(lang_code)
             printenc('Monster: ' .. data.monsters[#data.monsters].name .. ', Family: ' .. data.monsters[#data.monsters].family)
         end
     end,
-    parser = function()
-        -- print('String codes: ' .. get_str_codes('……'))
-        -- print('String codes: ' .. get_str_codes('Goblin Thug……4'))
-        -- print('String codes: ' .. get_str_codes('ゴブリン族……4'))
-
-        -- -- local pattern = '討伐対象(%d)：([%a%A%s]+)……([%d]+)'
-        -- local pattern = '討伐対象(%d)：(.+)……([%d]+)'
-        -- -- local pattern = '討伐対象(%d)：([^…]+)……([%d]+)'
-
-        -- local index, name, count = string.match('討伐対象1：Goblin Thug……4', pattern)
-        -- print('Parse test 1: ' .. tostring(index) .. ', ' .. tostring(name) .. ', ' .. tostring(count))
-        -- print('String codes 1: ' .. get_str_codes(name or ''))
-
-        -- index, name, count = string.match('討伐対象2：ゴブリン族……4', pattern)
-        -- print('Parse test 2: ' .. tostring(index) .. ', ' .. tostring(name) .. ', ' .. tostring(count))
-        -- print('String codes 2: ' .. get_str_codes(name or ''))
-        -- if name == 'ゴブリン族' then
-        --     print('MATCH!')
-        -- end
-
+    string_encoding = function()
         local in_string_utf8 = 'Monster: Goblin Thug, Family: ゴブリン族'
         print('in_string_utf8: ' .. #in_string_utf8)
         local out_string_sjis = encoding:UTF8_To_ShiftJIS(in_string_utf8)
@@ -204,6 +222,8 @@ local tests = function(lang_code)
         print('out_string_utf8: ' .. #out_string_utf8)
     end,
     options = function ()
+        data.mon:reset_training_data()
+
         -- Training options presented to the player
         local input_monsters = {
             { name = data.monsters[1].name, total = 4 },
@@ -218,7 +238,6 @@ local tests = function(lang_code)
         local target_monsters = data.mon._target_monsters
         if TEST(target_monsters ~= nil and #target_monsters == #input_monsters, 'Target monster count') then
             print_target_monster_data(target_monsters)
-            print('--')
             for i, v in ipairs(input_monsters) do
                 TEST(target_monsters[i].name == input_monsters[i].name, 'Target monster[' .. i .. '] name')
                 TEST(target_monsters[i].total == input_monsters[i].total, 'Target monster[' .. i .. '] total')
@@ -226,6 +245,8 @@ local tests = function(lang_code)
         end
     end,
     confirmed = function ()
+        data.mon:reset_training_data()
+
         -- Confirmed training options presented to the player
         local input_monsters = {
             { name = data.monsters[1].name, count = 1, total = 4 },
@@ -268,27 +289,34 @@ local tests = function(lang_code)
         data.mon:reset_training_data()
 
         local input_monsters = {
-            { name = data.monsters[1].name, total = 4 },
-            { name = data.monsters[2].name, total = 4 },
+            { name = data.monsters[1].name, count = 0, total = 4 },
+            { name = data.monsters[2].name, count = 0, total = 4 },
         }
-        present_training_options(data, input_monsters)
-        data.mon:process_input(data.output.training_accepted)
+        present_confirmed_training_options(data, input_monsters)
 
         local target_monsters = data.mon._target_monsters
         if TEST(target_monsters ~= nil and #target_monsters == #input_monsters, 'Target monster count') then
             print_target_monster_data(target_monsters)
 
             -- Kill 1
-            kill_target(input_monsters, 1)
+            kill_target(data.player_name, input_monsters, 1)
             TEST_KILL_COUNT(input_monsters, target_monsters, 1)
-            kill_target(input_monsters, 2)
+            kill_target(data.player_name, input_monsters, 2)
+            TEST_KILL_COUNT(input_monsters, target_monsters, 2)
+            print_target_monster_data(target_monsters)
+
+            -- Test a kill by someone not in the party
+            local other_player = 'Other Player'
+            kill_target(other_player, input_monsters, 2)
+            TEST_KILL_COUNT(input_monsters, target_monsters, 2, other_player)
+            kill_target(data.player_name, input_monsters, 2)
             TEST_KILL_COUNT(input_monsters, target_monsters, 2)
             print_target_monster_data(target_monsters)
 
             -- Kill all
-            kill_target(input_monsters, 1, 99)
+            kill_target(data.player_name, input_monsters, 1, 99)
             TEST_KILL_COUNT(input_monsters, target_monsters, 1)
-            kill_target(input_monsters, 2, 99)
+            kill_target(data.player_name, input_monsters, 2, 99)
             TEST_KILL_COUNT(input_monsters, target_monsters, 2)
             print_target_monster_data(target_monsters)
         end
@@ -297,41 +325,35 @@ local tests = function(lang_code)
         data.mon:reset_training_data()
 
         local input_monsters = {
-            { name = data.monsters[1].name, total = 4 },
-            { name = data.monsters[2].family, total = 4, target_name = data.monsters[2].name },
+            { name = data.monsters[1].name, count = 0, total = 4 },
+            { name = data.monsters[2].family, count = 0, total = 4, target_name = data.monsters[2].name },
         }
-        present_training_options(data, input_monsters)
-        data.mon:process_input(data.output.training_accepted)
-        print_target_monster_data(data.mon._target_monsters)
+        present_confirmed_training_options(data, input_monsters)
 
         local target_monsters = data.mon._target_monsters
         if TEST(target_monsters ~= nil and #target_monsters == #input_monsters, 'Target monster count') then
             print_target_monster_data(target_monsters)
 
-            kill_target(input_monsters, 1)
+            kill_target(data.player_name, input_monsters, 1)
             TEST_KILL_COUNT(input_monsters, target_monsters, 1)
-            kill_target(input_monsters, 2)
+            kill_target(data.player_name, input_monsters, 2)
             TEST_KILL_COUNT(input_monsters, target_monsters, 2)
             print_target_monster_data(target_monsters)
         end
     end,
-    killed_multiple_family_same_totals = function ()
+    killed_multiple_family = function ()
         data.mon:reset_training_data()
 
         local input_monsters = {
             { name = data.monsters[1].family, count = 0, total = 4, target_name = data.monsters[1].name },
             { name = data.monsters[2].family, count = 0, total = 4, target_name = data.monsters[2].name },
         }
-        present_training_options(data, input_monsters)
-        data.mon:process_input(data.output.training_accepted)
+        present_confirmed_training_options(data, input_monsters)
 
         local target_monsters = data.mon._target_monsters
         if TEST(target_monsters ~= nil and #target_monsters == #input_monsters, 'Target monster count') then
             print_target_monster_data(target_monsters)
 
-            -- If we kill second family first, since they have the same totals these tests fail
-            -- For now there isn't anything we can do about this until we add a hardcoded family > monster name map.
-            --
             -- Based on https://www.bg-wiki.com/ffxi/Fields_of_Valor and https://www.bg-wiki.com/ffxi/Fields_of_Valor
             -- The following training pages have two or more monster families that share the same count:
             -- Batallia Downs, page 4  (FOV)
@@ -339,43 +361,56 @@ local tests = function(lang_code)
             -- Middle Delkfutt's Tower, page 3 (GOV)
             -- Temple of Uggalepih, page 1 (GOV)
             -- Quicksand Caves, page 3, 5 (GOV)
-            kill_target(input_monsters, 2)
+            -- The old monitor logic relied upon matching total required kill count to match up a monster entry to a family
+            -- However since the introduction of the monster_db, this logic is no longer necessary, so these test should all pass now
+            kill_target(data.player_name, input_monsters, 2)
             TEST_KILL_COUNT(input_monsters, target_monsters, 2)
-            kill_target(input_monsters, 1)
+            kill_target(data.player_name, input_monsters, 1)
             TEST_KILL_COUNT(input_monsters, target_monsters, 1)
             print_target_monster_data(target_monsters)
 
             -- If we keep going, we should still get the correct counts by the end
-            kill_target(input_monsters, 1, 99)
-            kill_target(input_monsters, 2, 99)
+            kill_target(data.player_name, input_monsters, 1, 99)
+            kill_target(data.player_name, input_monsters, 2, 99)
             TEST_KILL_COUNT(input_monsters, target_monsters, 1)
             TEST_KILL_COUNT(input_monsters, target_monsters, 2)
             print_target_monster_data(target_monsters)
         end
     end,
-    killed_multiple_family_diff_totals = function ()
+    killed_multiple_one_shot = function ()
         data.mon:reset_training_data()
 
         local input_monsters = {
-            { name = data.monsters[1].family, total = 5, target_name = data.monsters[1].name },
-            { name = data.monsters[2].family, total = 4, target_name = data.monsters[2].name },
+            { name = data.monsters[1].family, count = 0, total = 4, target_name = data.monsters[1].name },
+            { name = data.monsters[2].family, count = 0, total = 4, target_name = data.monsters[2].name },
         }
-        present_training_options(data, input_monsters)
-        data.mon:process_input(data.output.training_accepted)
+        present_confirmed_training_options(data, input_monsters)
 
         local target_monsters = data.mon._target_monsters
         if TEST(target_monsters ~= nil and #target_monsters == #input_monsters, 'Target monster count') then
             print_target_monster_data(target_monsters)
 
-            -- Since they have different totals, these tests should pass
-            kill_target(input_monsters, 2)
-            TEST_KILL_COUNT(input_monsters, target_monsters, 2)
-            kill_target(input_monsters, 1)
-            TEST_KILL_COUNT(input_monsters, target_monsters, 1)
-            print_target_monster_data(target_monsters)
+            -- Test killing multiple monsters in one go, it causes the logs to output in a diff order
+            local monster_countA = input_monsters[1].count + 1
+            data.mon:process_input(data.output.target_monster_killed(monster_countA, input_monsters[1].total))
 
-            kill_target(input_monsters, 2, 99)
-            kill_target(input_monsters, 1, 99)
+            local monster_countB = input_monsters[2].count + 1
+            data.mon:process_input(data.output.target_monster_killed(monster_countB, input_monsters[2].total))
+            monster_countB = monster_countB + 1
+            data.mon:process_input(data.output.target_monster_killed(monster_countB, input_monsters[2].total))
+            input_monsters[2].count = monster_countB
+
+            monster_countA = monster_countA + 1
+            data.mon:process_input(data.output.target_monster_killed(monster_countA, input_monsters[1].total))
+            input_monsters[1].count = monster_countA
+
+            data.mon:process_input(data.output.monster_killed_by(input_monsters[1].target_name, data.player_name))
+
+            data.mon:process_input(data.output.monster_killed_by(input_monsters[2].target_name, data.player_name))
+            data.mon:process_input(data.output.monster_killed_by(input_monsters[2].target_name, data.player_name))
+
+            data.mon:process_input(data.output.monster_killed_by(input_monsters[1].target_name, data.player_name))
+
             TEST_KILL_COUNT(input_monsters, target_monsters, 1)
             TEST_KILL_COUNT(input_monsters, target_monsters, 2)
             print_target_monster_data(target_monsters)
@@ -409,32 +444,63 @@ local tests = function(lang_code)
             end
         end
     end,
+    other_chat = function()
+        data.mon:process_input(chat_modes.system, 'There is no fee for teleporting to Home Point #3 in Port Windurst.')
+    end,
     }
 end
 
 local function run_tests(desc, tests_table, run_list)
-    print(desc)
+    print(log_color.bright .. log_color.black .. '=========================' .. log_color.reset)
+    print(log_color.bright .. log_color.black .. '==  ' .. log_color.reset .. desc:upper())
+
+    local test_report = {}
     for _, test_name in ipairs(run_list) do
         local testf = tests_table[test_name]
         if type(testf) ~= 'function' then
-            print('Test not found: ' .. test_name)
+            print(log_color.red .. 'Error: Test not found: "' .. test_name .. '"' .. log_color.reset)
         else
-            print('Running test: ' .. test_name:upper())
+            if test_output_verbose then
+                print('Running test: ' .. test_name:gsub('_', ' '):upper())
+            end
+
+            test_output = { fails = {}, name = test_name }
             testf()
-            -- raw_print(log_color.bright .. log_color.black .. '------------------------' .. log_color.reset)
+            table.insert(test_report, test_output)
+
+            if test_output_verbose then
+                print(log_color.bright .. log_color.black .. '------------------------' .. log_color.reset)
+            end
+        end
+    end
+    if test_output_verbose then
+        print('All tests completed.')
+    end
+    print(log_color.bright .. log_color.black .. '=========================' .. log_color.reset)
+
+    for _, v in ipairs(test_report) do
+        local passed = #v.fails == 0
+        local passOrFail = passed and 'PASSED' or 'FAILED'
+        local color = passed and log_color.green or log_color.red
+        print(color .. 'Test ' .. v.name:gsub('_', ' ') .. ': ' .. passOrFail .. log_color.reset)
+        for _, fail in ipairs(v.fails) do
+            print(log_color.red .. '    ' .. fail .. log_color.reset)
         end
     end
 end
 
 
-local function run_all_tests()
+local function run_all_tests(verbose)
+    if verbose then
+        test_output_verbose = true
+    end
     run_tests('Japanese', tests('ja'), tests_to_run)
-    --run_tests('English', tests('en'), tests_to_run)
+    run_tests('English', tests('en'), tests_to_run)
 end
 
 -- Run tests
 if not running_in_ashita then
-    run_all_tests()
+    run_all_tests(true)
 end
 
 return run_all_tests

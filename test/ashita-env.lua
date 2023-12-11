@@ -24,6 +24,9 @@ function AshitaCore:GetMemoryManager()
             return {
                 GetMemberZone = function(...)
                     return 0
+                end,
+                GetMemberName = function(...)
+                    return 'Player'
                 end
             }
         end,
