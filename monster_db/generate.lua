@@ -24,6 +24,7 @@ local htmlparser = require('htmlparser')
 
 local src_dir = addons_root_dir .. addon.name .. '/monster_db/src'
 local dest_dir = addons_root_dir .. addon.name .. '/monster_db/data'
+ashita.fs.create_dir(dest_dir)
 
 local monster_key_list = { 
     'goblin', -- https://www.bg-wiki.com/ffxi/Category:Goblin
@@ -47,7 +48,39 @@ local monster_key_list = {
     'crawler', -- https://www.bg-wiki.com/ffxi/Category:Crawler
     'yagudo', -- https://www.bg-wiki.com/ffxi/Category:Yagudo
     'funguar', -- https://www.bg-wiki.com/ffxi/Category:Funguar
+    'hound', -- https://www.bg-wiki.com/ffxi/Category:Hound
+    'leech', -- https://www.bg-wiki.com/ffxi/Category:Leech
+    'goobbue', -- https://www.bg-wiki.com/ffxi/Category:Goobbue
+    'bomb', -- https://www.bg-wiki.com/ffxi/Category:Bomb
+    'morbol', -- https://www.bg-wiki.com/ffxi/Category:Morbol
+    'ghost', -- https://www.bg-wiki.com/ffxi/Category:Ghost
+    'elemental', -- https://www.bg-wiki.com/ffxi/Category:Elemental
+    'shadow', -- https://www.bg-wiki.com/ffxi/Category:Fomor
+    'fly', -- https://www.bg-wiki.com/ffxi/Category:Fly
+    'sapling', -- https://www.bg-wiki.com/ffxi/Category:Sapling
+    'beetle', -- https://www.bg-wiki.com/ffxi/Category:Beetle
+    'scorpion', -- https://www.bg-wiki.com/ffxi/Category:Scorpion
+    'golem', -- https://www.bg-wiki.com/ffxi/Category:Golem
+    'wyvern', -- https://www.bg-wiki.com/ffxi/Category:Wyvern
+    'cockatrice', -- https://www.bg-wiki.com/ffxi/Category:Cockatrice
+    'cardian', -- https://www.bg-wiki.com/ffxi/Category:Cardian
+    'corpselight', -- https://www.bg-wiki.com/ffxi/Category:Corpselight
+    'corse', -- https://www.bg-wiki.com/ffxi/Category:Corse
+    'doomed', -- https://www.bg-wiki.com/ffxi/Category:Doomed
+    'dullahan', -- https://www.bg-wiki.com/ffxi/Category:Dullahan
+    'naraka', -- https://www.bg-wiki.com/ffxi/Category:Naraka
+    'qutrub', -- https://www.bg-wiki.com/ffxi/Category:Qutrub
+    'vampyr', -- https://www.bg-wiki.com/ffxi/Category:Vampyr
+    'caturae', -- https://www.bg-wiki.com/ffxi/Category:Caturae
+    'cluster', -- https://www.bg-wiki.com/ffxi/Category:Cluster
+    'spheroid', -- https://www.bg-wiki.com/ffxi/Category:Spheroid
+    'iron_giant', -- https://www.bg-wiki.com/ffxi/Category:Iron_Giant
+    'magic_pot', -- https://www.bg-wiki.com/ffxi/Category:Magic_Pot
+    'marolith', -- https://www.bg-wiki.com/ffxi/Category:Marolith
+    'snoll', -- https://www.bg-wiki.com/ffxi/Category:Snoll
 }
+
+local monster_type_report = T{}
 
 local function remove_duplicates(tb)
     local exists = {}
@@ -112,8 +145,28 @@ local function scrape_monster_list(monster_family_key)
 
     mob_list = remove_duplicates(mob_list)
 
+    -- Grab the type from the page too
+    local potential_tables = root('table.Standard.R1-White')
+    local monster_type = 'Unknown'
+    for _, table in ipairs(potential_tables) do
+        local table_rows = table('tbody > tr')
+
+        for _, v in ipairs(table_rows) do
+            local columns = v('td')
+            if #columns == 2 and columns[1]:getcontent():find('Type') then
+                local anchor = columns[2]('a')
+                if #anchor == 0 then
+                    monster_type = columns[2]:getcontent()
+                else
+                    monster_type = anchor[1]:getcontent()
+                end
+            end
+        end
+    end
+
+    table.append(monster_type_report, { monster_family_key, monster_type })
+
     -- Save to file
-    ashita.fs.create_dir(dest_dir)
     local dest_file = dest_dir .. '/' .. monster_family_key .. '.lua'
     save_mob_list(dest_file, mob_list)
 end
@@ -122,3 +175,19 @@ end
 for _, val in ipairs(monster_key_list) do
     scrape_monster_list(val)
 end
+
+local function save_mob_type_list(file_path, type_list)
+    local f = io.open(file_path, 'w')
+    f:write('return {\n')
+    type_list:each(function (v) f:write('    [\'' .. v[1] .. '\'] = \'' .. v[2] .. '\',\n') end)
+    f:write('}')
+    f:close()
+end
+
+-- print('Monster types:')
+-- for _, v in ipairs(monster_type_report) do
+--     print(v[1] .. ' = ' .. v[2])
+-- end
+
+local dest_file = dest_dir .. '/types.lua'
+save_mob_type_list(dest_file, monster_type_report)

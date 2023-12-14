@@ -1,0 +1,16 @@
+return {
+    'Walking Sapling',
+    'Strolling Sapling',
+    'Wandering Sapling',
+    'Stalking Sapling',
+    'Slash Pine',
+    'Caveberry',
+    'Leshachikha',
+    'Witch Hazel',
+    'Treant Sapling',
+    'Cherry Sapling',
+    'Boyahda Sapling',
+    'Trotting Sapling',
+    'Swagger Spruce',
+    'Feyweald Sapling',
+}

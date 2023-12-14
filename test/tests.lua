@@ -39,6 +39,7 @@ local monitor = require('monitor')
 local ansicolors = require('ansicolors')
 local monster_db = require('monster_db/db')
 local chat_modes = require('chat_modes')
+local plural_to_singular = require('plural_to_singular')
 
 local test_data = {
     en = require('testdata_en'),
@@ -47,8 +48,9 @@ local test_data = {
 
 local data = {}
 local tests_to_run = {
-    -- 'string_encoding',
+    'string_encoding',
     'init',
+    'plurals',
     'options',
     'confirmed',
     'cancelled',
@@ -58,6 +60,7 @@ local tests_to_run = {
     'killed_multiple_one_shot',
     'completed',
     'other_chat',
+    'types',
 }
 
 local test_output_verbose = false
@@ -92,6 +95,8 @@ local function TEST(condition, title)
     end
     if not condition then
         table.insert(test_output.fails, result)
+    else
+        test_output.pass_count = test_output.pass_count + 1
     end
     return condition
 end
@@ -129,7 +134,8 @@ local function present_training_options(data, input_monsters)
 
     local options_list = {}
     for i, v in ipairs(input_monsters) do
-        table.append(options_list, data.output.options_entry(i, v.name, v.total)[2])
+        local localised_name = (data.lang_code == 'en' and v.total > 1) and (v.name .. 's') or v.name
+        table.append(options_list, data.output.options_entry(i, localised_name, v.total)[2])
     end
     data.mon:process_input(data.output.options_intro[1], table.concat(options_list, '\r\n'))
 
@@ -139,7 +145,8 @@ end
 local function present_confirmed_training_options(data, input_monsters)
     local options_list = {}
     for i, v in ipairs(input_monsters) do
-        table.append(options_list, data.output.confirmed_entry(i, v.name, v.count, v.total)[2])
+        local localised_name = (data.lang_code == 'en' and v.count > 1) and (v.name .. 's') or v.name
+        table.append(options_list, data.output.confirmed_entry(i, localised_name, v.count, v.total)[2])
     end
     data.mon:process_input(data.output.confirmed_outro[1], table.concat(options_list, '\r\n'))
 
@@ -188,6 +195,7 @@ local tests = function(lang_code)
     init = function ()
         -- Reset data
         data = {}
+        data.lang_code = lang_code
 
         -- Initialise monitor
         data.mon = monitor:new(lang_code, printenc, encoding, 'training_data_test')
@@ -220,6 +228,53 @@ local tests = function(lang_code)
         print('out_string_sjis: ' .. #out_string_sjis)
         local out_string_utf8 = encoding:ShiftJIS_To_UTF8(out_string_sjis)
         print('out_string_utf8: ' .. #out_string_utf8)
+    end,
+    plurals = function()
+        -- Only run this test for english
+        if lang_code ~= 'en' then
+            return
+        end
+
+        local test_names = {
+            { 'Liches', 'Lich' },
+            { 'Leeches', 'Leech' },
+            { 'Bunnies', 'Bunny' },
+            { 'Jellies', 'Jelly' },
+            { 'Wolves', 'Wolf' },
+            { 'Bandersnatches', 'Bandersnatch' },
+            { 'Flies', 'Fly' },
+            { 'Bogies', 'Bogy' },
+            { 'Gases', 'Gas' },
+            { 'Flamingoes', 'Flamingo' },
+            { 'Deinonychi', 'Deinonychus' },
+            { 'Machairoduses', 'Machairodus' },
+            { 'Eotyranni', 'Eotyrannus' },
+            { 'Auxiliarii', 'Auxiliarius' },
+            { 'Decuriones', 'Decurio' },
+            { 'Sagittarii', 'Sagittarius' },
+            { 'Essedarii', 'Essedarius' },
+            { 'Retiarii', 'Retiarius' },
+            { 'Triarii', 'Triarius' },
+            { 'Lanistae', 'Lanista' },
+            { 'member of the Bee family', 'Bee Family' },
+            { 'members of the Bomb Family', 'Bomb Family' },
+            { 'Will-o\'-the-Wisps', 'Will-o\'-the-Wisp' },
+            { 'Temple Opo-opos', 'Temple Opo-opo' },
+            { 'The Greater Demon of the Hellfires', 'The Greater Demon of the Hellfire' },
+            -- No change expected
+            { 'Seven of Cups' },
+            { 'Four of Batons' },
+            { 'Five of Swords' },
+            { 'Acrophies' },
+            { 'Lesser Gaylas' },
+            { 'Greater Gaylas' },
+        }
+
+        for _, t in ipairs(test_names) do
+            local singular = plural_to_singular(t[1])
+            local expected = t[2] or t[1]
+            TEST(expected == singular, ('%s -> %s = %s'):format(t[1], expected, singular))
+        end
     end,
     options = function ()
         data.mon:reset_training_data()
@@ -447,6 +502,33 @@ local tests = function(lang_code)
     other_chat = function()
         data.mon:process_input(chat_modes.system, 'There is no fee for teleporting to Home Point #3 in Port Windurst.')
     end,
+    types = function()
+        -- Test Undead and Arcana types
+        local input_monsters = {}
+        if lang_code == 'en' then
+            input_monsters = {
+                { name = 'Undead-type creatures', count = 0, total = 2, target_name='Foul Meat' },
+                { name = 'Arcana-type creatures', count = 0, total = 2, target_name='Boggart' },
+            }
+        else
+            input_monsters = {
+                { name = 'アンデッド類', count = 0, total = 2, target_name='Foul Meat' },
+                { name = 'アルカナ類', count = 0, total = 2, target_name='Boggart' },
+            }
+        end
+
+        present_confirmed_training_options(data, input_monsters)
+
+        local target_monsters = data.mon._target_monsters
+        print_target_monster_data(target_monsters)
+
+        kill_target(data.player_name, input_monsters, 1)
+        TEST_KILL_COUNT(input_monsters, target_monsters, 1)
+
+        kill_target(data.player_name, input_monsters, 2)
+        TEST_KILL_COUNT(input_monsters, target_monsters, 2)
+        print_target_monster_data(target_monsters)
+    end,
     }
 end
 
@@ -464,7 +546,7 @@ local function run_tests(desc, tests_table, run_list)
                 print('Running test: ' .. test_name:gsub('_', ' '):upper())
             end
 
-            test_output = { fails = {}, name = test_name }
+            test_output = { fails = {}, name = test_name, pass_count = 0 }
             testf()
             table.insert(test_report, test_output)
 
@@ -477,14 +559,17 @@ local function run_tests(desc, tests_table, run_list)
         print('All tests completed.')
     end
     print(log_color.bright .. log_color.black .. '=========================' .. log_color.reset)
+    print('Test Summary:')
 
     for _, v in ipairs(test_report) do
         local passed = #v.fails == 0
-        local passOrFail = passed and 'PASSED' or 'FAILED'
-        local color = passed and log_color.green or log_color.red
-        print(color .. 'Test ' .. v.name:gsub('_', ' ') .. ': ' .. passOrFail .. log_color.reset)
-        for _, fail in ipairs(v.fails) do
-            print(log_color.red .. '    ' .. fail .. log_color.reset)
+        if v.pass_count > 0 or not passed then
+            local passOrFail = passed and 'PASSED' or 'FAILED'
+            local color = passed and log_color.green or log_color.red
+            print(color .. 'Test ' .. v.name:gsub('_', ' ') .. ': ' .. passOrFail .. log_color.reset)
+            for _, fail in ipairs(v.fails) do
+                print(log_color.red .. '    ' .. fail .. log_color.reset)
+            end
         end
     end
 end

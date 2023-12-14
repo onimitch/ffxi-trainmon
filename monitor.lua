@@ -28,15 +28,6 @@ local function player_is_in_party(player_name)
     return false
 end
 
-local function shorten_family_name(family_name)
-    if string.find(family_name, 'members of the ') or string.find(family_name, 'member of the ') then
-        family_name = family_name:gsub('members of the ', '')
-        family_name = family_name:gsub('member of the ', '')
-        family_name = family_name:lower()
-    end
-    return family_name
-end
-
 function monitor:new(lang_code, print_func, encoding_module, storage_key)
     local instance = {}
     setmetatable(instance, self)
@@ -55,7 +46,6 @@ end
 
 function monitor:reset_training_data()
     self._target_monsters = {}
-    self._target_monsters_repeat = {}
     self._target_monsters_options = {}
     self._target_zone_id = -1
     self._target_monster_kills = {}
@@ -67,6 +57,8 @@ function monitor:load_training_data()
     self._data.settings = settings.load(train_data_defaults, self._storage_key)
     self._target_monsters = self._data.settings.target_monsters
     self._target_zone_id = tonumber(self._data.settings.target_zone_id)
+    self._target_monsters_repeat = {}
+    self._target_zone_id_repeat = -1
 end
 
 function monitor:save_train_data()
@@ -94,15 +86,13 @@ function monitor:process_input(mode, input)
             local captures = { string.match(line, self._rules.confirmed) }
             if #captures > 0 then
                 local capture_data = self._rules.confirmed_captures(captures)
-                self.print(chat.header(addon.name):append(chat.message(string.format('confirmed: %d, %s (%d/%d)', monster_index, capture_data.name, capture_data.count, capture_data.total))))
-
                 local is_family = string.find(capture_data.name, self._rules.monster_family) ~= nil
-                local monster_name = not is_family and capture_data.name or shorten_family_name(capture_data.name)
+                -- self.print(chat.header(addon.name):append(chat.message(string.format('confirmed: %d, %s (%d/%d)', monster_index, capture_data.name, capture_data.count, capture_data.total))))
 
                 self._target_monsters_options[tonumber(monster_index)] = {
-                    name = monster_name,
-                    count = tonumber(capture_data.count),
-                    total = tonumber(capture_data.total),
+                    name = capture_data.name,
+                    count = capture_data.count,
+                    total = capture_data.total,
                     is_family = is_family
                 }
                 monster_index = monster_index + 1
@@ -118,11 +108,11 @@ function monitor:process_input(mode, input)
         local zone_name = string.match(input, self._rules.confirmed_zone):trim()
         local zone_id = AshitaCore:GetResourceManager():GetString('zones.names', self.encoding:UTF8_To_ShiftJIS(zone_name, true))
         if zone_id ~= -1 then
-            self.print(chat.header(addon.name):append(chat.message(string.format('Training zone: %s (%d)', zone_name, zone_id))))
             self._target_zone_id = zone_id
+            -- self.print(chat.header(addon.name):append(chat.message(string.format('Updated training data for: %s', zone_name))))
             self:save_train_data()
         else
-            self.print(chat.header(addon.name):append(chat.error(string.format('Unknown Training zone: "%s"', zone_name))))
+            self.print(chat.header(addon.name):append(chat.error(string.format('Unknown training zone: "%s"', zone_name))))
             local player_zone_id = tonumber(AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0))
             local player_zone_name = self.encoding:ShiftJIS_To_UTF8(AshitaCore:GetResourceManager():GetString('zones.names', player_zone_id), true)
             self.print(chat.header(addon.name):append(chat.message(string.format('Player zone: %s (%d)', player_zone_name, player_zone_id))))
@@ -152,15 +142,13 @@ function monitor:process_input(mode, input)
             local captures = { string.match(line, self._rules.options) }
             if #captures > 0 then
                 local capture_data = self._rules.options_captures(captures)
-                self.print(chat.header(addon.name):append(chat.message(string.format('options: %d, %s (%d)', monster_index, capture_data.name, capture_data.total))))
-
                 local is_family = string.find(capture_data.name, self._rules.monster_family, 1, true) ~= nil
-                local monster_name = not is_family and capture_data.name or shorten_family_name(capture_data.name)
+                -- self.print(chat.header(addon.name):append(chat.message(string.format('options: %d, %s (%d)', monster_index, capture_data.name, capture_data.total))))
 
                 self._target_monsters_options[tonumber(monster_index)] = {
-                    name = monster_name,
+                    name = capture_data.name,
                     count = 0,
-                    total = tonumber(capture_data.total),
+                    total = capture_data.total,
                     is_family = is_family
                 }
                 monster_index = monster_index + 1
@@ -204,7 +192,7 @@ function monitor:process_input(mode, input)
             if monster_name ~= nil and player_is_in_party(killed_by) then
                 -- Monster has now been killed, so get the monster name and link it to the last count update
                 local last_target_kill = self._target_monster_kills[1]
-                -- local total = last_target_kill.total
+                local total = last_target_kill.total
                 local new_count = last_target_kill.count
                 local expected_count = new_count - 1
 
@@ -219,12 +207,27 @@ function monitor:process_input(mode, input)
 
                 -- If we didn't find the monster name, it might be for a family of monsters
                 -- Get the family name from the monster db
-                local family_name = monster_db:get_family_name(monster_name, self._lang_code)
-                if family_name ~= nil then
-                    for i, v in ipairs(self._target_monsters) do
-                        if v.name == family_name then
-                            monster_index = i
-                            break
+                if monster_index == 0 then
+                    local family_name = monster_db:get_family_name(monster_name, self._lang_code)
+                    if family_name ~= nil then
+                        for i, v in ipairs(self._target_monsters) do
+                            if v.name == family_name then
+                                monster_index = i
+                                break
+                            end
+                        end
+                    end
+                end
+
+                -- Try by getting monster type from monster db
+                if monster_index == 0 then
+                    local monster_type = monster_db:get_type(monster_name, self._lang_code)
+                    if monster_type ~= nil then
+                        for i, v in ipairs(self._target_monsters) do
+                            if v.name == monster_type then
+                                monster_index = i
+                                break
+                            end
                         end
                     end
                 end
@@ -261,7 +264,7 @@ function monitor:process_input(mode, input)
 
                 if monster_index == 0 then
                     -- Monster not found, ignore since it's not part of our training
-                    -- self.print(chat.header(addon.name):append(chat.error('Failed to find "%s" in Training Data (%d/%d)')):fmt(monster_name, new_count, total))
+                    self.print(chat.header(addon.name):append(chat.error('Failed to find "%s" in Training Data (%d/%d)')):fmt(monster_name, new_count, total))
                     return
                 end
 
@@ -281,8 +284,8 @@ function monitor:process_input(mode, input)
 
             -- Make a copy of the target_monsters incase we repeat the training
             self._target_monsters_repeat = self._target_monsters
-            -- Clear training data
-            self._target_monsters = {}
+            self._target_zone_id_repeat = self._target_zone_id
+            self:reset_training_data()
             self:save_train_data()
             return
         end
@@ -292,6 +295,8 @@ function monitor:process_input(mode, input)
     if mode == chat_modes.battle and #self._target_monsters_repeat > 0 and string.find(input, self._rules.repeated) then
         self._target_monsters = self._target_monsters_repeat
         self._target_monsters_repeat = {}
+        self._target_zone_id = self._target_zone_id_repeat
+        self._target_zone_id_repeat = -1
         self:save_train_data()
         return
     end

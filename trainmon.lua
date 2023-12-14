@@ -31,6 +31,9 @@ local trainmon = T{
 
     settings = {},
     default_settings = T{
+        visible = true,
+        always_show = false,
+
         icon_scale = 20,
         entry_icon_scale = 12,
         window_width = 200,
@@ -123,7 +126,10 @@ end
 
 -- Display the latest training status
 local function draw_window()
-    if #trainmon.monitor._target_monsters == 0 or trainmon.monitor._target_zone_id ~= trainmon.player_zone_id then
+    local visible = #trainmon.monitor._target_monsters > 0
+    visible = visible and trainmon.settings.visible
+    visible = visible and (trainmon.settings.always_show or trainmon.monitor._target_zone_id == trainmon.player_zone_id)
+    if not visible then
         set_text_visible(false)
         return
     end
@@ -254,6 +260,23 @@ ashita.events.register('command', 'trainmon_command', function (e)
     if (#args == 2 and args[2]:any('reset')) then
         trainmon.monitor:reset_training_data()
         trainmon.monitor:save_train_data()
+        print(chat.header(addon.name):append(chat.message('Training data reset')))
+        return
+    end
+
+    -- Handle: /tmon show <always>
+    if (#args >= 2 and args[2]:any('show')) then
+        trainmon.settings.visible = true
+        trainmon.settings.always_show = args >= 3 and args[3] == 'always'
+        settings.save()
+        return
+    end
+
+    -- Handle: /tmon hide
+    if (#args == 2 and args[2]:any('hide')) then
+        trainmon.settings.visible = false
+        trainmon.settings.always_show = false
+        settings.save()
         return
     end
 
@@ -317,6 +340,11 @@ end)
 * desc : Event called when the addon is processing incoming text.
 --]]
 ashita.events.register('text_in', 'trainmon_text_in', function (e)
+    -- Ignore text in from Ashita addons/plugins
+    if e.injected then
+        return
+    end
+
     local mode = bit.band(e.mode_modified,  0x000000FF)
     process_incoming_message(mode, e.message_modified)
 end)

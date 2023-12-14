@@ -1,0 +1,4 @@
+return {
+    'Defender (Monster)',
+    'Detector',
+}
