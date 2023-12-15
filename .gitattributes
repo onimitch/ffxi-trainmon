@@ -2,3 +2,8 @@ release.sh export-ignore
 .gitattributes export-ignore
 .gitmodules export-ignore
 .gitignore export-ignore
+test/ export-ignore
+monster_db/src/ export-ignore
+monster_db/generate.lua export-ignore
+monster_db/htmlparser/ export-ignore
+monster_db/htmlparser.lua export-ignore
