@@ -1,6 +1,6 @@
 addon.name      = 'trainmon'
 addon.author    = 'onimitch'
-addon.version   = '1.0'
+addon.version   = '1.1'
 addon.desc      = 'Tracks training monster kill counts and displays them onscreen.'
 addon.link      = 'https://github.com/onimitch/ffxi-trainmon'
 
