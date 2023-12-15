@@ -243,9 +243,8 @@ ashita.events.register('command', 'trainmon_command', function (e)
         else
             local zone_name = AshitaCore:GetResourceManager():GetString('zones.names', trainmon.monitor._target_zone_id)
             local player_zone_name = AshitaCore:GetResourceManager():GetString('zones.names', trainmon.player_zone_id)
-            print(chat.header(addon.name):append(chat.message(string.format('Training in: %s (Player zone: %s)', zone_name, player_zone_name))))
-            
-            local current_status = ''
+
+            local current_status = string.format('Training in: %s\nCurrent zone: %s\n', zone_name, player_zone_name)
             for i,v in ipairs(trainmon.monitor._target_monsters) do
                 current_status = current_status .. string.format('%d: %s (%d/%d)', i, v.name, v.count, v.total)
                 if i < #trainmon.monitor._target_monsters then
@@ -267,7 +266,7 @@ ashita.events.register('command', 'trainmon_command', function (e)
     -- Handle: /tmon show <always>
     if (#args >= 2 and args[2]:any('show')) then
         trainmon.settings.visible = true
-        trainmon.settings.always_show = args >= 3 and args[3] == 'always'
+        trainmon.settings.always_show = #args >= 3 and args[3] == 'always'
         settings.save()
         return
     end
@@ -356,6 +355,12 @@ end)
 ashita.events.register('d3d_present', 'trainmon_present', function()
     -- Check if player's job changed, then training will be reset
     local player = AshitaCore:GetMemoryManager():GetPlayer()
+    local player_ent = GetPlayerEntity();
+    if (player == nil or player.isZoning or player_ent == nil) then
+		set_text_visible(false)
+		return
+	end
+
     local job_main = player:GetMainJob()
     local job_sub = player:GetSubJob()
 
