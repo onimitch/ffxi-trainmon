@@ -17,8 +17,11 @@ local C = ffi.C
 local d3d8dev = d3d.get_device()
 
 local monitor = require('monitor')
-local test_runner = require('test.tests')
 local chat_modes = require('chat_modes')
+
+local module_path = debug.getinfo(1, 'S').source:sub(2)
+local trainmon_tests_file = string.gsub(module_path, 'trainmon%.lua', 'test/tests.lua')
+local test_runner = ashita.fs.exists(trainmon_tests_file) and require('test.tests') or nil
 
 
 local trainmon = T{
