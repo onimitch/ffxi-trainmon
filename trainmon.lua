@@ -107,7 +107,6 @@ local function process_incoming_message(mode, message)
 
         -- Monitor deals with UTF8
         local message_utf8 = encoding:ShiftJIS_To_UTF8(message)
-
         trainmon.monitor:process_input(mode, message_utf8)
 
         trainmon.processing_message = false
@@ -145,10 +144,10 @@ local function draw_window()
         local entry_icon_scale = trainmon.settings.entry_icon_scale
         local entry_name_font = trainmon.settings.entry
         local entry_count_font = trainmon.settings.entry_count
-        
+
         local cursor_x, cursor_y = imgui.GetCursorScreenPos()
         imgui.Image(trainmon_ui.icon_texture_data, { icon_scale, icon_scale })
-        
+
         local zone_name = encoding:ShiftJIS_To_UTF8(AshitaCore:GetResourceManager():GetString('zones.names', trainmon.monitor._target_zone_id), true)
         trainmon_ui.title_text:set_text(zone_name)
         local w, h = trainmon_ui.title_text:get_text_size()
@@ -355,7 +354,7 @@ end)
 ashita.events.register('d3d_present', 'trainmon_present', function()
     -- Check if player's job changed, then training will be reset
     local player = AshitaCore:GetMemoryManager():GetPlayer()
-    local player_ent = GetPlayerEntity();
+    local player_ent = GetPlayerEntity()
     if (player == nil or player.isZoning or player_ent == nil) then
 		set_text_visible(false)
 		return

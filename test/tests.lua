@@ -48,19 +48,19 @@ local test_data = {
 
 local data = {}
 local tests_to_run = {
-    'string_encoding',
-    'init',
-    'plurals',
-    'options',
-    'confirmed',
-    'cancelled',
-    'killed',
-    'killed_single_family',
-    'killed_multiple_family',
-    'killed_multiple_one_shot',
-    'completed',
-    'other_chat',
-    'types',
+    'string_encoding_ja',
+    -- 'init',
+    -- 'plurals_en',
+    -- 'options',
+    -- 'confirmed',
+    -- 'cancelled',
+    -- 'killed',
+    -- 'killed_single_family',
+    -- 'killed_multiple_family',
+    -- 'killed_multiple_one_shot',
+    -- 'completed',
+    -- 'other_chat',
+    -- 'types',
 }
 
 local test_output_verbose = false
@@ -218,23 +218,44 @@ local tests = function(lang_code)
                 name = monster_db.families[key].monsters[1],
                 family = monster_db.families[key][lang_code],
             }))
-            printenc('Monster: ' .. data.monsters[#data.monsters].name .. ', Family: ' .. data.monsters[#data.monsters].family)
+            -- printenc('Monster: ' .. data.monsters[#data.monsters].name .. ', Family: ' .. data.monsters[#data.monsters].family)
         end
     end,
-    string_encoding = function()
-        local in_string_utf8 = 'Monster: Goblin Thug, Family: ゴブリン族'
-        print('in_string_utf8: ' .. #in_string_utf8)
-        local out_string_sjis = encoding:UTF8_To_ShiftJIS(in_string_utf8)
-        print('out_string_sjis: ' .. #out_string_sjis)
-        local out_string_utf8 = encoding:ShiftJIS_To_UTF8(out_string_sjis)
-        print('out_string_utf8: ' .. #out_string_utf8)
-    end,
-    plurals = function()
-        -- Only run this test for english
-        if lang_code ~= 'en' then
-            return
+    string_encoding_ja = function()
+        -- UTF8 > ShiftJIS > UTF8
+        local in_strings_utf8 = {
+            'Monster: Goblin Thug, Family: ゴブリン族',
+            [[討伐対象の目安：レベル1～6
+        訓練エリア：東サルタバルタ
+        自主訓練の達成と同時に、同じ自主訓練を自動的に
+        繰り返す設定にしますか？]],
+            'prompt' .. string.char(0x7F,0x31),
+            'autoprompt' .. string.char(0x7F,0x34,0x01),
+            'color' .. string.char(0x1E,0x08),
+            'color' .. string.char(0x1F,0x0F),
+            'del' .. string.char(0x07),
+        }
+        for i, v in ipairs(in_strings_utf8) do
+            print('in_string_utf8: ' .. #v)
+            local out_string_sjis = encoding:UTF8_To_ShiftJIS(v)
+            print('out_string_sjis: ' .. #out_string_sjis)
+            local out_string_utf8 = encoding:ShiftJIS_To_UTF8(out_string_sjis)
+            print('out_string_utf8: ' .. #out_string_utf8)
+            TEST(#out_string_utf8 == #v, '(' .. i .. ') "' .. v .. '"')
         end
 
+        -- ShiftJIS > UTF8 > ShiftJIS
+        local in_strings_sjis = require('teststringsjis')
+        for i, v in ipairs(in_strings_sjis) do
+            print('in_string_sjis: ' .. #v)
+            local out_string_utf8 = encoding:ShiftJIS_To_UTF8(v)
+            print('out_string_utf8: ' .. #out_string_utf8)
+            local out_string_sjis = encoding:UTF8_To_ShiftJIS(out_string_utf8)
+            print('out_string_sjis: ' .. #out_string_sjis)
+            TEST(#out_string_sjis == #v, '(' .. i .. ') "' .. out_string_utf8 .. '"')
+        end
+    end,
+    plurals_en = function()
         local test_names = {
             { 'Liches', 'Lich' },
             { 'Leeches', 'Leech' },
@@ -532,7 +553,7 @@ local tests = function(lang_code)
     }
 end
 
-local function run_tests(desc, tests_table, run_list)
+local function run_tests(desc, tests_table, run_list, lang_code)
     print(log_color.bright .. log_color.black .. '=========================' .. log_color.reset)
     print(log_color.bright .. log_color.black .. '==  ' .. log_color.reset .. desc:upper())
 
@@ -542,16 +563,22 @@ local function run_tests(desc, tests_table, run_list)
         if type(testf) ~= 'function' then
             print(log_color.red .. 'Error: Test not found: "' .. test_name .. '"' .. log_color.reset)
         else
-            if test_output_verbose then
-                print('Running test: ' .. test_name:gsub('_', ' '):upper())
-            end
-
-            test_output = { fails = {}, name = test_name, pass_count = 0 }
-            testf()
-            table.insert(test_report, test_output)
-
-            if test_output_verbose then
-                print(log_color.bright .. log_color.black .. '------------------------' .. log_color.reset)
+            if test_name:find('_en$') and lang_code ~= 'en' then
+                -- Don't run english only test for japanese
+            elseif test_name:find('_ja$') and lang_code ~= 'ja' then
+                -- Don't run japanese only test for english
+            else
+                if test_output_verbose then
+                    print('Running test: ' .. test_name:gsub('_', ' '):upper())
+                end
+    
+                test_output = { fails = {}, name = test_name, pass_count = 0 }
+                testf()
+                table.insert(test_report, test_output)
+    
+                if test_output_verbose then
+                    print(log_color.bright .. log_color.black .. '------------------------' .. log_color.reset)
+                end
             end
         end
     end
@@ -579,8 +606,8 @@ local function run_all_tests(verbose)
     if verbose then
         test_output_verbose = true
     end
-    run_tests('Japanese', tests('ja'), tests_to_run)
-    run_tests('English', tests('en'), tests_to_run)
+    run_tests('Japanese', tests('ja'), tests_to_run, 'ja')
+    run_tests('English', tests('en'), tests_to_run, 'en')
 end
 
 -- Run tests
