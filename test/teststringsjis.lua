@@ -1,12 +1,13 @@
 return {
-    'Monster: Goblin Thug, Family: ƒSƒuƒŠƒ“‘°',
-    [[“¢”°‘ÎÛ‚Ì–ÚˆÀFƒŒƒxƒ‹1`6
-ŒP—ûƒGƒŠƒAF“ŒƒTƒ‹ƒ^ƒoƒ‹ƒ^
-©åŒP—û‚Ì’B¬‚Æ“¯‚ÉA“¯‚¶©åŒP—û‚ğ©“®“I‚É
-ŒJ‚è•Ô‚·İ’è‚É‚µ‚Ü‚·‚©H]],
-    'prompt' .. string.char(0x7F,0x31),
-    'autoprompt' .. string.char(0x7F,0x34,0x01),
-    'color' .. string.char(0x1E,0x08),
-    'color' .. string.char(0x1F,0x0F),
-    'del' .. string.char(0x07),
-}
+    'Hello World',
+    'Monster: Goblin Thug, Family: ï¿½Sï¿½uï¿½ï¿½ï¿½ï¿½ï¿½ï¿½',
+    [[ï¿½ï¿½ï¿½ï¿½ï¿½ÎÛ‚Ì–Úˆï¿½ï¿½Fï¿½ï¿½ï¿½xï¿½ï¿½1ï¿½`6
+ï¿½Pï¿½ï¿½ï¿½Gï¿½ï¿½ï¿½Aï¿½Fï¿½ï¿½ï¿½Tï¿½ï¿½ï¿½^ï¿½oï¿½ï¿½ï¿½^
+ï¿½ï¿½ï¿½ï¿½Pï¿½ï¿½ï¿½Ì’Bï¿½ï¿½ï¿½Æ“ï¿½ï¿½ï¿½ï¿½ÉAï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Pï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Iï¿½ï¿½
+ï¿½Jï¿½ï¿½Ô‚ï¿½ï¿½İ’ï¿½É‚ï¿½ï¿½Ü‚ï¿½ï¿½ï¿½ï¿½H]],
+    'prompt' .. string.char(0x7F,0x31) .. 'prompt',
+    'autoprompt' .. string.char(0x7F,0x34,0x01) .. 'autoprompt',
+    'color' .. string.char(0x1E,0x08) .. 'color',
+    'color' .. string.char(0x1F,0x0F) .. 'color',
+    'del' .. string.char(0x07) .. 'del',
+    }

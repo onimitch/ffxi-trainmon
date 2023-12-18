@@ -381,6 +381,7 @@ ashita.events.register('d3d_present', 'trainmon_present', function()
             trainmon.player_job_sub = job_sub
             -- print(chat.header(addon.name):append(chat.message('Job changed, training data reset')))
             trainmon.monitor:reset_training_data()
+            trainmon.monitor:save_training_data()
         end
 
         draw_window()

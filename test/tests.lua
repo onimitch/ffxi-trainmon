@@ -224,35 +224,38 @@ local tests = function(lang_code)
     string_encoding_ja = function()
         -- UTF8 > ShiftJIS > UTF8
         local in_strings_utf8 = {
+            'Hello World',
             'Monster: Goblin Thug, Family: ゴブリン族',
             [[討伐対象の目安：レベル1～6
         訓練エリア：東サルタバルタ
         自主訓練の達成と同時に、同じ自主訓練を自動的に
         繰り返す設定にしますか？]],
-            'prompt' .. string.char(0x7F,0x31),
-            'autoprompt' .. string.char(0x7F,0x34,0x01),
-            'color' .. string.char(0x1E,0x08),
-            'color' .. string.char(0x1F,0x0F),
-            'del' .. string.char(0x07),
+            'prompt' .. string.char(0x7F,0x31) .. 'prompt',
+            'autoprompt' .. string.char(0x7F,0x34,0x01) .. 'autoprompt',
+            'color' .. string.char(0x1E,0x08) .. 'color',
+            'color' .. string.char(0x1F,0x0F) .. 'color',
+            'del' .. string.char(0x07) .. 'del',
         }
         for i, v in ipairs(in_strings_utf8) do
+            print('------ utf8 > shiftjs ' .. i)
             print('in_string_utf8: ' .. #v)
             local out_string_sjis = encoding:UTF8_To_ShiftJIS(v)
             print('out_string_sjis: ' .. #out_string_sjis)
             local out_string_utf8 = encoding:ShiftJIS_To_UTF8(out_string_sjis)
             print('out_string_utf8: ' .. #out_string_utf8)
-            TEST(#out_string_utf8 == #v, '(' .. i .. ') "' .. v .. '"')
+            TEST(#out_string_utf8 == #v, ('(%d) %d == %d'):format(i, #out_string_utf8, #v))
         end
 
         -- ShiftJIS > UTF8 > ShiftJIS
         local in_strings_sjis = require('teststringsjis')
         for i, v in ipairs(in_strings_sjis) do
+            print('------ shiftjs > utf8 ' .. i)
             print('in_string_sjis: ' .. #v)
             local out_string_utf8 = encoding:ShiftJIS_To_UTF8(v)
             print('out_string_utf8: ' .. #out_string_utf8)
             local out_string_sjis = encoding:UTF8_To_ShiftJIS(out_string_utf8)
             print('out_string_sjis: ' .. #out_string_sjis)
-            TEST(#out_string_sjis == #v, '(' .. i .. ') "' .. out_string_utf8 .. '"')
+            TEST(#out_string_sjis == #v,  ('(%d) %d == %d'):format(i, #out_string_sjis, #v))
         end
     end,
     plurals_en = function()

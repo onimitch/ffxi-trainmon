@@ -51,6 +51,9 @@ function GetPlayerEntity()
     }
 end
 
+LogManager = {}
+function LogManager:Log(...) end
+
 ashita = {
     events = {
         register = function (...) end,
