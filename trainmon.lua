@@ -223,6 +223,45 @@ local function initialise_ui()
     trainmon_ui.row_entries = {}
 end
 
+local pGameMenu = ashita.memory.find('FFXiMain.dll', 0, "8B480C85C974??8B510885D274??3B05", 16, 0)
+local pEventSystem = ashita.memory.find('FFXiMain.dll', 0, "A0????????84C0741AA1????????85C0741166A1????????663B05????????0F94C0C3", 0, 0)
+local pInterfaceHidden = ashita.memory.find('FFXiMain.dll', 0, "8B4424046A016A0050B9????????E8????????F6D81BC040C3", 0, 0)
+
+local function get_game_menu_name()
+    local subPointer = ashita.memory.read_uint32(pGameMenu)
+    local subValue = ashita.memory.read_uint32(subPointer)
+    if (subValue == 0) then
+        return ''
+    end
+    local menuHeader = ashita.memory.read_uint32(subValue + 4)
+    local menuName = ashita.memory.read_string(menuHeader + 0x46, 16)
+    return string.gsub(menuName, '\x00', '')
+end
+
+local function is_event_system_active()
+    if (pEventSystem == 0) then
+        return false
+    end
+    local ptr = ashita.memory.read_uint32(pEventSystem + 1)
+    if (ptr == 0) then
+        return false
+    end
+
+    return (ashita.memory.read_uint8(ptr) == 1)
+end
+
+local function is_game_intterface_hidden()
+    if (pEventSystem == 0) then
+        return false
+    end
+    local ptr = ashita.memory.read_uint32(pInterfaceHidden + 10)
+    if (ptr == 0) then
+        return false
+    end
+
+    return (ashita.memory.read_uint8(ptr + 0xB4) == 1)
+end
+
 
 --[[
 * event: command
@@ -355,10 +394,20 @@ end)
 * desc : Event called when the Direct3D device is presenting a scene.
 --]]
 ashita.events.register('d3d_present', 'trainmon_present', function()
-    -- Check if player's job changed, then training will be reset
+    -- Don't render until we have a player entity
     local player = AshitaCore:GetMemoryManager():GetPlayer()
     local player_ent = GetPlayerEntity()
-    if (player == nil or player.isZoning or player_ent == nil) then
+    if player == nil or player.isZoning or player_ent == nil then
+		set_text_visible(false)
+		return
+	end
+    -- Hide when map open
+    if string.match(get_game_menu_name(), 'map') then
+		set_text_visible(false)
+		return
+	end
+    -- Hide if event active or interface hidden
+    if is_game_intterface_hidden() or is_event_system_active() then
 		set_text_visible(false)
 		return
 	end
