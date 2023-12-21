@@ -250,7 +250,7 @@ local function is_event_system_active()
     return (ashita.memory.read_uint8(ptr) == 1)
 end
 
-local function is_game_intterface_hidden()
+local function is_game_interface_hidden()
     if (pEventSystem == 0) then
         return false
     end
@@ -407,7 +407,7 @@ ashita.events.register('d3d_present', 'trainmon_present', function()
 		return
 	end
     -- Hide if event active or interface hidden
-    if is_game_intterface_hidden() or is_event_system_active() then
+    if is_game_interface_hidden() or is_event_system_active() then
 		set_text_visible(false)
 		return
 	end
@@ -441,7 +441,6 @@ local function update_settings(s)
     if (s ~= nil) then
         trainmon.settings = s
     end
-    settings.save()
     initialise_ui()
 end
 

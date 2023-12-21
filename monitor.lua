@@ -39,7 +39,16 @@ function monitor:new(lang_code, print_func, encoding_module, storage_key)
     instance._rules = test_rules[lang_code]
     instance._data = {}
 
-    instance:load_training_data()
+    instance:reset_training_data()
+
+    -- Register for settings changes
+    settings.register(instance._storage_key, instance._storage_key .. '_update', function (s)
+        if (s ~= nil) then
+            instance._data = s
+            instance:on_training_data_updated()
+        end
+    end)
+    instance._data = settings.load(train_data_defaults, instance._storage_key)
 
     return instance
 end
@@ -50,20 +59,18 @@ function monitor:reset_training_data()
     self._target_zone_id = -1
     self._target_monster_kills = {}
     self._waiting_confirm_end = false
-end
-
-function monitor:load_training_data()
-    self:reset_training_data()
-    self._data.settings = settings.load(train_data_defaults, self._storage_key)
-    self._target_monsters = self._data.settings.target_monsters
-    self._target_zone_id = tonumber(self._data.settings.target_zone_id)
     self._target_monsters_repeat = {}
     self._target_zone_id_repeat = -1
 end
 
+function monitor:on_training_data_updated()
+    self._target_monsters = self._data.target_monsters
+    self._target_zone_id = tonumber(self._data.target_zone_id)
+end
+
 function monitor:save_train_data()
-    self._data.settings.target_monsters = self._target_monsters
-    self._data.settings.target_zone_id = self._target_zone_id
+    self._data.target_monsters = self._target_monsters
+    self._data.target_zone_id = self._target_zone_id
     settings.save(self._storage_key)
 end
 
