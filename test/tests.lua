@@ -49,18 +49,19 @@ local test_data = {
 local data = {}
 local tests_to_run = {
     'string_encoding_ja',
-    -- 'init',
-    -- 'plurals_en',
-    -- 'options',
-    -- 'confirmed',
-    -- 'cancelled',
-    -- 'killed',
-    -- 'killed_single_family',
-    -- 'killed_multiple_family',
-    -- 'killed_multiple_one_shot',
-    -- 'completed',
-    -- 'other_chat',
-    -- 'types',
+    'init',
+    'plurals_en',
+    'options',
+    'confirmed',
+    'cancelled',
+    'killed',
+    'killed_diff_order',
+    'killed_single_family',
+    'killed_multiple_family',
+    'killed_multiple_one_shot',
+    'completed',
+    'other_chat',
+    'types',
 }
 
 local test_output_verbose = false
@@ -156,6 +157,8 @@ end
 
 local function kill_target(killed_by, input_monsters, monster_index, increment)
     increment = increment or 1
+    local total_kills = math.abs(increment)
+
     local input_monster = input_monsters[monster_index]
     local target_name = input_monster.target_name or input_monster.name
     local current_count = input_monster.count or 0
@@ -163,15 +166,24 @@ local function kill_target(killed_by, input_monsters, monster_index, increment)
 
     -- We need to log a seperate entry for each kill, otherwise the monitor might miss information
     -- This is basically the same as it would appear in the game chat logs anyway
-    for i=1,increment do
+    for i = 1, total_kills do
         local new_count = math.min(current_count + 1, input_monster.total)
         if new_count == current_count then
             break -- already reached total kills
         end
-        if player_in_party then
-            data.mon:process_input(data.output.target_monster_killed(new_count, input_monster.total))
+
+        -- Reverse order? (CatsEyeXI server behaviour)
+        if increment < 0 then
+            data.mon:process_input(data.output.monster_killed_by(target_name, killed_by))
+            if player_in_party then
+                data.mon:process_input(data.output.target_monster_killed(new_count, input_monster.total))
+            end
+        else
+            if player_in_party then
+                data.mon:process_input(data.output.target_monster_killed(new_count, input_monster.total))
+            end
+            data.mon:process_input(data.output.monster_killed_by(target_name, killed_by))
         end
-        data.mon:process_input(data.output.monster_killed_by(target_name, killed_by))
         current_count = new_count
     end
 
@@ -400,6 +412,42 @@ local tests = function(lang_code)
             print_target_monster_data(target_monsters)
         end
     end,
+    killed_diff_order = function ()
+        data.mon:reset_training_data()
+
+        local input_monsters = {
+            { name = data.monsters[1].name, count = 0, total = 4 },
+            { name = data.monsters[2].name, count = 0, total = 4 },
+        }
+        present_confirmed_training_options(data, input_monsters)
+
+        local target_monsters = data.mon._target_monsters
+        if TEST(target_monsters ~= nil and #target_monsters == #input_monsters, 'Target monster count') then
+            print_target_monster_data(target_monsters)
+
+            -- Kill 1
+            kill_target(data.player_name, input_monsters, 1, -1)
+            TEST_KILL_COUNT(input_monsters, target_monsters, 1)
+            kill_target(data.player_name, input_monsters, 2, -1)
+            TEST_KILL_COUNT(input_monsters, target_monsters, 2)
+            print_target_monster_data(target_monsters)
+
+            -- Test a kill by someone not in the party
+            local other_player = 'Other Player'
+            kill_target(other_player, input_monsters, 2, -1)
+            TEST_KILL_COUNT(input_monsters, target_monsters, 2, other_player)
+            kill_target(data.player_name, input_monsters, 2, -1)
+            TEST_KILL_COUNT(input_monsters, target_monsters, 2)
+            print_target_monster_data(target_monsters)
+
+            -- Kill all
+            kill_target(data.player_name, input_monsters, 1, -99)
+            TEST_KILL_COUNT(input_monsters, target_monsters, 1)
+            kill_target(data.player_name, input_monsters, 2, -99)
+            TEST_KILL_COUNT(input_monsters, target_monsters, 2)
+            print_target_monster_data(target_monsters)
+        end
+    end,
     killed_single_family = function ()
         data.mon:reset_training_data()
 
@@ -615,6 +663,7 @@ end
 
 -- Run tests
 if not running_in_ashita then
+    LogManager:SetLogLevel(5)
     run_all_tests(true)
 end
 

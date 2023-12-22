@@ -52,7 +52,18 @@ function GetPlayerEntity()
 end
 
 LogManager = {}
-function LogManager:Log(...) end
+LogManager.log_level = 0
+function LogManager:Log(level, tag, message, ...)
+    if level <= LogManager.log_level then
+        print(tostring(message))
+    end
+end
+function LogManager:GetLogLevel()
+    return LogManager.log_level
+end
+function LogManager:SetLogLevel(level)
+    LogManager.log_level = level
+end
 
 ashita = {
     events = {
