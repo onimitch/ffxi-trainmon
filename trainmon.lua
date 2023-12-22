@@ -385,8 +385,8 @@ ashita.events.register('text_in', 'trainmon_text_in', function (e)
         return
     end
 
-    local mode = bit.band(e.mode_modified,  0x000000FF)
-    process_incoming_message(mode, e.message_modified)
+    local mode = bit.band(e.mode,  0x000000FF)
+    process_incoming_message(mode, e.message)
 end)
 
 --[[
