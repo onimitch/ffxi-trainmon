@@ -251,7 +251,7 @@ local function is_event_system_active()
 end
 
 local function is_game_interface_hidden()
-    if (pEventSystem == 0) then
+    if (pInterfaceHidden == 0) then
         return false
     end
     local ptr = ashita.memory.read_uint32(pInterfaceHidden + 10)

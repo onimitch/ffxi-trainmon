@@ -230,7 +230,7 @@ function monitor:process_input(mode, input)
     end
 
     -- User accepted the last viewed training options
-    if (mode == chat_modes.timed_battle or mode == chat_modes.unknown) and string.find(input, self._rules.accepted) then
+    if (mode == chat_modes.timed_battle or mode == chat_modes.misc_message) and string.find(input, self._rules.accepted) then
         if #self._target_monsters_options > 0 then
             -- Use the last options we parsed
             self._target_monsters = self._target_monsters_options
@@ -242,7 +242,7 @@ function monitor:process_input(mode, input)
     end
 
     -- Training was cancelled
-    if (mode == chat_modes.timed_battle or mode == chat_modes.unknown) and string.find(input, self._rules.cancelled) then
+    if (mode == chat_modes.timed_battle or mode == chat_modes.misc_message) and string.find(input, self._rules.cancelled) then
         self:reset_training_data()
         self:save_training_data()
         return
