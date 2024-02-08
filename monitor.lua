@@ -106,7 +106,7 @@ function monitor:reconcile_target_kills()
     local target_kills_count = #self._target_monster_kills
     local kills_count = #self._monster_kills
 
-    local stale = os.clock() - 5 -- seconds
+    local stale = os.clock() - 20 -- seconds
     -- Remove stale entries
     array_remove(self._target_monster_kills, function(t, i) return t[i].time < stale end)
     array_remove(self._monster_kills, function(t, i) return t[i].time < stale end)
