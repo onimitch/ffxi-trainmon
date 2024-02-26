@@ -368,10 +368,10 @@ end)
 * event: packet_in
 * desc : Event called when the addon is processing incoming packets.
 --]]
-ashita.events.register('packet_in', 'trainmon_packet_in', function(event)
+ashita.events.register('packet_in', 'trainmon_packet_in', function(e)
     -- Zone change packet
-    if event.id == 0x0A then
-        trainmon.player_zone_id = tonumber(AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0))
+    if e.id == 0x0A then
+        trainmon.player_zone_id = struct.unpack('H', e.data, 0x30 + 1)
     end
 end)
 
@@ -417,7 +417,7 @@ ashita.events.register('d3d_present', 'trainmon_present', function()
 
     -- If we've got training data, make sure the player_zone_id is up to date
     -- For now this is a workaround, as the zone change packet isn't always picking up a change of zone
-    trainmon.player_zone_id = tonumber(AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0))
+    -- trainmon.player_zone_id = tonumber(AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0))
 
     if job_main ~= 0 then
         if trainmon.player_job_main == 0 then
